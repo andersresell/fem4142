@@ -8,6 +8,10 @@ SMALL_VAL = 1e-8
 PROBLEM_TYPE_PLANE_STRESS = 0
 PROBLEM_TYPE_PLATE = 1
 
+STRESS_RECONSTRUCTION_CONSISTENT = 0
+STRESS_RECONSTRUCTION_EXTRAPOLATED_FULL = 1
+STRESS_RECONSTRUCTION_EXTRAPOLATED_BARLOW = 2
+
 problem_type_to_string = {
     PROBLEM_TYPE_PLANE_STRESS: "PROBLEM_TYPE_PLANE_STRESS",
     PROBLEM_TYPE_PLATE: "PROBLEM_TYPE_PLATE"
@@ -154,6 +158,7 @@ il_to_ij_loc_all = {
     ELEMENT_TYPE_Q4: [(0, 0), (1, 0), (1, 1), (0, 1)],
     ELEMENT_TYPE_Q4_USER: [(0, 0), (1, 0), (1, 1), (0, 1)],
     ELEMENT_TYPE_Q4R: [(0, 0), (1, 0), (1, 1), (0, 1)],
+    ELEMENT_TYPE_Q8: [(0, 0), (2, 0), (2, 2), (0, 2), (1, 0), (2, 1), (1, 2), (0, 1)],
     ELEMENT_TYPE_Q9: [(0, 0), (2, 0), (2, 2), (0, 2), (1, 0), (2, 1), (1, 2), (0, 1), (1, 1)],
     ELEMENT_TYPE_Q9R: [(0, 0), (2, 0), (2, 2), (0, 2), (1, 0), (2, 1), (1, 2), (0, 1), (1, 1)],
     ELEMENT_TYPE_Q16: [(0, 0), (3, 0), (3, 3), (0, 3), (1, 0), (2, 0), (3, 1), (3, 2), (2, 3), (1, 3), (0, 2), (0, 1),

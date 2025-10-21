@@ -2,53 +2,77 @@ from src.useful_imports import *  #import required functions
 
 if __name__ == "__main__":
 
-    E = 200e9
+    E = 200000e6
     nu = 0.3
-    h = 0.001
-    Lx = 1.0
-    Ly = 0.001
-    P = 10
-    element_type = ELEMENT_TYPE_Q16
+    L = 1.0
+    Lx = L / 2
+    Ly = L / 2
+    q = -1e6
     problem_type = PROBLEM_TYPE_PLATE
-    nEx = 10
-    nEy = 1
+    nEx = 2
+    nEy = 2
+    # thickness_ratios = np.linspace(10, 1e6, 5)
+    # thickness_ratios = [10, 20, 30, 50, 100, 200, 300, 500, 1000, 1e6]
+    thickness_ratios = np.logspace(1, 6, 15)
+    # thickness_ratios = [10]
 
-    config = create_config(E, nu, h, element_type, problem_type)
-    mesh = create_structured_quad_mesh(config, Lx, Ly, nEx, nEy)
+    plt.figure()
 
-    add_boundary_condition(config, mesh, "west", DOF_W, 0)
-    add_boundary_condition(config, mesh, "south_west", DOF_THETAX, 0)
-    add_boundary_condition(config, mesh, "west", DOF_THETAY, 0)
+    element_types = [ELEMENT_TYPE_Q4, ELEMENT_TYPE_Q8R, ELEMENT_TYPE_Q8, ELEMENT_TYPE_Q9, ELEMENT_TYPE_Q16]
+    # element_types = [ELEMENT_TYPE_Q4]
+    for element_type in element_types:
+        wc_over_wc_k = []
+        for tr in thickness_ratios:
+            h = L / tr
+            config = create_config(E, nu, h, element_type, problem_type)
+            mesh = create_structured_quad_mesh(config, Lx, Ly, nEx, nEy)
 
-    load_func = lambda x, y: P / (h * Ly)
-    add_load(config, mesh, "east", LOAD_TYPE_TRACTION, load_func)
+            #model one quartrer of the plate
+            add_boundary_condition(config, mesh, "west", DOF_THETAY, 0)
+            add_boundary_condition(config, mesh, "south", DOF_THETAX, 0)
 
-    solver_data = create_solver_data(config, mesh)
-    solve(config, solver_data, mesh)
+            #Clamp the real boundaries
+            add_boundary_condition(config, mesh, "east", DOF_W, 0)
+            add_boundary_condition(config, mesh, "east", DOF_THETAX, 0)
+            add_boundary_condition(config, mesh, "east", DOF_THETAY, 0)
+            add_boundary_condition(config, mesh, "north", DOF_W, 0)
+            add_boundary_condition(config, mesh, "north", DOF_THETAX, 0)
+            add_boundary_condition(config, mesh, "north", DOF_THETAY, 0)
 
-    Rz, Rthetax, Rthetay = unpack_solution(config, solver_data.R_ext)
-    # print("Rthtax\n", Rthetax)
-    # print("Rthtay\n", Rthetay)
-    # print("Rz\n", Rz)
+            load_func = lambda x, y: q
+            add_load(config, mesh, "domain", LOAD_TYPE_PRESSURE, load_func)
 
-    # print("K\n", solver_data.K.toarray())
-    # print("A\n", solver_data.A.toarray())
+            solver_data = create_solver_data(config, mesh)
+            solve(config, solver_data, mesh)
 
-    w, _, _ = unpack_solution(config, solver_data.r)
-    w_east = w[mesh.node_sets["east"]]
-    w_tip = np.max(w)  # np.mean(w_east)
+            w, _, _ = unpack_solution(config, solver_data.r)
+            w_max = np.max(w)
+            nodes = mesh.nodes
+            x_nodes = nodes[:, 0]
+            y_nodes = nodes[:, 1]
+            #Check that max deflection is at center
+            #dist_to_center = np.sqrt((x_nodes - Lx / 2)**2 + (y_nodes - Ly / 2)**2)
+            dist_to_center = np.sqrt(x_nodes**2 + y_nodes**2)
+            center_node_index = np.argmin(dist_to_center)
+            wc = w[center_node_index]
+            assert np.isclose(w_max, wc), f"Max deflection {w_max} not at center but {wc}"
 
-    I = h**3 * Ly / 12
-    print("P", P)
-    print("R_ext", np.sum(solver_data.R_ext[0::3]))
-    w_tip_theory = P * Lx**3 / (3 * E * I)
-    print("w_tip: ", w_tip)
-    print("w_tip_theory: ", w_tip_theory)
-    print("rel error percent: ", abs((w_tip - w_tip_theory) * 100 / w_tip_theory))
-    # nodeIDs_east = mesh.node_sets["east"]
-    # y_east = mesh.nodes[mesh.node_sets["east"], 1]
-    # nodeIDs_east_ordered = nodeIDs_east[np.argsort(y_east)]
-    # w_tip = w[nodeIDs_east_ordered]
-    # y_east_ordered = mesh.nodes[nodeIDs_east_ordered, 1]
+            print(f"Element type: {element_type_to_str[element_type]}, L/h: {tr:.1f}, wc: {wc:.6e} m")
 
-    Plot(config, mesh, solver_data)
+            D = E * h**3 / (12 * (1 - nu**2))
+            wc_k = 0.00126 * abs(q) * L**4 / D
+            wc_over_wc_k.append(wc / wc_k)
+
+            # Plot(config, mesh, solver_data)
+        plt.plot(thickness_ratios, wc_over_wc_k, '.-', label=element_type_to_str[element_type])
+
+    plt.title(f"Clamped plate, center deflection over Kirchhoff solution\n{nEx}x{nEy} elements per quarter plate")
+
+    #log plot
+    plt.xscale('log')
+    plt.xlabel("L/h")
+    plt.ylabel("wc / wc_k")
+    plt.ylim([0.7, 1.2])
+    plt.grid()
+    plt.legend()
+    plt.show()

@@ -78,6 +78,7 @@ class Config:
         self.specify_contour_limits = False
         self.contour_min = 0
         self.contour_max = 1
+        self.stress_reconstruction_method = STRESS_RECONSTRUCTION_CONSISTENT
 
 
 def create_config(E, nu, h, element_type, problem_type) -> Config:

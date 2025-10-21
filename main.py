@@ -6,22 +6,23 @@ if __name__ == "__main__":
     E = 210e9  # Young's modulus in Pa
     nu = 0.3  # Poisson's ratio
     h = 1  # Plate thickness in m
-    Lx = 20  #Length in x-direction
+    Lx = 10  #Length in x-direction
     Ly = 1  #Length in y-direction
     q = 1000  #Line load applied to the top edge
     element_type = ELEMENT_TYPE_Q8  #Use quadrilateral element
     problem_type = PROBLEM_TYPE_PLANE_STRESS  #Specify that a plane stress problem is solved
-    nEx = 6  #Number of elements in x-direction
-    nEy = 1  #Number of elements in y-direction
+    nEx = 40  #Number of elements in x-direction
+    nEy = 4  #Number of elements in y-direction
 
     p0 = q * h  #Equivalent pressure load for plane stress problem
-    perturb_mesh_nodes_factor = 1.0
+    perturb_mesh_nodes_factor = 0
 
     #====================================================================
     # Group problem settings in an object called config
     #====================================================================
     config = create_config(E, nu, h, element_type, problem_type)
     config.hourglass_scaling = 0.1
+    config.stress_reconstruction_method = STRESS_RECONSTRUCTION_EXTRAPOLATED_FULL
 
     #====================================================================
     # Create a rectangular structured mesh
@@ -32,12 +33,14 @@ if __name__ == "__main__":
     # Add fixed boundary condition  to the left edge called "west"
     #====================================================================
     add_boundary_condition(config, mesh, "west", DOF_U, 0)
-    add_boundary_condition(config, mesh, "south_west", DOF_V, 0)
+    add_boundary_condition(config, mesh, "west", DOF_V, 0)
 
+    # add_boundary_condition(config, mesh, "east", DOF_U, 0)
+    # add_boundary_condition(config, mesh, "east", DOF_V, 1)
     #====================================================================
     # Assign a linearly varying load on the top edge named "north"
     #====================================================================
-    load_func = lambda x, y: p0 * (1 - x / Lx)
+    load_func = lambda x, y: p0
     add_load(config, mesh, "north", LOAD_TYPE_PRESSURE, load_func)
 
     # load_func = lambda x, y: (0, -p0)
@@ -70,8 +73,9 @@ if __name__ == "__main__":
     v_top_ordered = v[
         nodeIDs_top_ordered]  #Take out the lateral displacements v_top_ordered the same way as x_top_ordered
     I = Ly**3 * h / 12  #Second moment of inertia for a rectangular cross-section
-    v_theory = -(p0 * h) / (E * I) * (x_top_ordered**4 / 24 - x_top_ordered**5 /
-                                      (120 * Lx) - Lx / 12 * x_top_ordered**3 + Lx**2 / 12 * x_top_ordered**2)
+    # v_theory = -(p0 * h) / (E * I) * (x_top_ordered**4 / 24 - x_top_ordered**5 /
+    #                                   (120 * Lx) - Lx / 12 * x_top_ordered**3 + Lx**2 / 12 * x_top_ordered**2)
+    v_theory = -q / (24 * E * I) * x_top_ordered**2 * (x_top_ordered**2 - 4 * Lx * x_top_ordered + 6 * Lx**2)
 
     plt.plot(x_top_ordered, v_top_ordered, label="Lateral displacement at top edge")
     plt.plot(x_top_ordered, v_theory, label="Beam theory solution", linestyle='--')

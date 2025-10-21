@@ -5,7 +5,7 @@ from matplotlib.widgets import Slider, RadioButtons, CheckButtons, TextBox
 import matplotlib.colors as mcolors
 import matplotlib.lines as mlines
 from src.fem_utils import *
-import src.element_stiffness as element_stiffness
+import src.stress_recovery as stress_recovery
 from src.mesh import Mesh, QuadElementTraits
 from src.utils import Config
 from src.solver_data import *
@@ -559,12 +559,12 @@ class Plot:
 
     def set_vertex_pos_and_color(self, x_vert, y_vert, scalar_vert, mesh: Mesh, solver_data: SolverData,
                                  config: Config):
+        num_quads_1D = self.NUM_QUADS_PLOT_1D_PER_ELEMENT
+        nE = mesh.get_nE()
+        nodes = mesh.nodes
+        elements = mesh.elements
+        element_type = config.element_type
         if config.problem_type == PROBLEM_TYPE_PLANE_STRESS:
-            num_quads_1D = self.NUM_QUADS_PLOT_1D_PER_ELEMENT
-            nE = mesh.get_nE()
-            nodes = mesh.nodes
-            elements = mesh.elements
-            element_type = config.element_type
             u, v = unpack_solution(config, solver_data.r)
 
             for e in range(nE):
@@ -595,11 +595,16 @@ class Plot:
                         scalar_vert[I_vert] = scalar
 
             if config.contour_type == "stress":
-
+                stress_reconstruction_method = config.stress_reconstruction_method
                 xi_eta = [self.xi_eta_viz(i, j) for i in range(num_quads_1D + 1) for j in range(num_quads_1D + 1)]
                 for e in range(nE):
-                    sigma_E = element_stiffness.calc_stress_plane_stress_consistent(e, config, mesh, nodes, u, v,
-                                                                                    xi_eta)
+                    if stress_reconstruction_method == STRESS_RECONSTRUCTION_CONSISTENT:
+                        sigma_E = stress_recovery.recover_stress_plane_stress_consistent(
+                            e, config, mesh, nodes, u, v, xi_eta)
+                    else:
+                        assert stress_reconstruction_method == STRESS_RECONSTRUCTION_EXTRAPOLATED_FULL or stress_reconstruction_method == STRESS_RECONSTRUCTION_EXTRAPOLATED_BARLOW
+                        sigma_E = stress_recovery.recover_stress_plane_stress_extrapolated(
+                            e, config, mesh, nodes, u, v, xi_eta)
                     for i in range(num_quads_1D + 1):
                         for j in range(num_quads_1D + 1):
                             I_loc = self.IX_viz_E(0, i, j)  #relative index
@@ -621,7 +626,37 @@ class Plot:
 
         else:
             assert config.problem_type == PROBLEM_TYPE_PLATE
-            assert False  #FIXME
+            w, thetax, thetay = unpack_solution(config, solver_data.r)
+            for e in range(nE):
+                for i in range(num_quads_1D + 1):
+                    for j in range(num_quads_1D + 1):
+                        xi, eta = self.xi_eta_viz(i, j)
+                        N = shape_functions.calc_N(xi, eta, element_type)
+                        x_e = nodes[elements[e, :], 0]
+                        y_e = nodes[elements[e, :], 1]
+                        w_e = w[elements[e, :]]
+                        thetax_e = thetax[elements[e, :]]
+                        thetay_e = thetay[elements[e, :]]
+                        x_viz = np.dot(N, x_e)
+                        y_viz = np.dot(N, y_e)
+                        scalar = 0.0
+                        if config.contour_type == "disp":
+                            if config.disp_component == "w":
+                                scalar = np.dot(N, w_e)
+                            elif config.disp_component == "thetax":
+                                scalar = np.dot(N, thetax_e)
+                            else:
+                                assert config.disp_component == "thetay"
+                                scalar = np.dot(N, thetay_e)
+
+                        #Set the vertex values
+                        I_vert = self.IX_viz_E(e, i, j)
+                        x_vert[I_vert] = x_viz
+                        y_vert[I_vert] = y_viz
+                        scalar_vert[I_vert] = scalar
+            if config.contour_type == "stress":
+
+                assert False
 
     def plot_element_outlines(self, config: Config, x_vert, y_vert, outlines):
         if not config.show_mesh:
