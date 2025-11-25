@@ -5,16 +5,16 @@ if __name__ == "__main__":
 
     E = 210e9  # Young's modulus in Pa
     nu = 0.3  # Poisson's ratio
-    h = 1  # Plate thickness in m
+    h = 0.5  # Plate thickness in m
     Lx = 10  #Length in x-direction
-    Ly = 1  #Length in y-direction
+    Ly = Lx / 100  #Length in y-direction
     q = 1000  #Line load applied to the top edge
-    element_type = ELEMENT_TYPE_Q8  #Use quadrilateral element
+    element_type = ELEMENT_TYPE_Q16  #Use quadrilateral element
     problem_type = PROBLEM_TYPE_PLANE_STRESS  #Specify that a plane stress problem is solved
-    nEx = 40  #Number of elements in x-direction
-    nEy = 4  #Number of elements in y-direction
+    nEx = 1  #Number of elements in x-direction
+    nEy = 1  #Number of elements in y-direction
 
-    p0 = q * h  #Equivalent pressure load for plane stress problem
+    p0 = q / h  #Equivalent pressure load for plane stress problem
     perturb_mesh_nodes_factor = 0
 
     #====================================================================
@@ -33,7 +33,7 @@ if __name__ == "__main__":
     # Add fixed boundary condition  to the left edge called "west"
     #====================================================================
     add_boundary_condition(config, mesh, "west", DOF_U, 0)
-    add_boundary_condition(config, mesh, "west", DOF_V, 0)
+    add_boundary_condition(config, mesh, "south_west", DOF_V, 0)
 
     # add_boundary_condition(config, mesh, "east", DOF_U, 0)
     # add_boundary_condition(config, mesh, "east", DOF_V, 1)

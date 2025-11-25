@@ -136,6 +136,6 @@ def assign_boundary_conditions(config: Config, mesh: Mesh, solver_data: SolverDa
             A[eq, eq] = 1
             b[eq] = val
 
-    solver_data.A = A
+    solver_data.A = A.tocsr()
     solver_data.b = b
     print("Boundary conditions assigned")

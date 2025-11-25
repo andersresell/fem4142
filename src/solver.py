@@ -86,7 +86,6 @@ def solve(config: Config, solver_data: SolverData, mesh: Mesh):
 
     bcs.assign_boundary_conditions(config, mesh, solver_data)
 
-    solver_data.A = solver_data.A.tocsr()  #Convert to csr matrix for more efficient solving
     solver_data.r = spsolve(solver_data.A, solver_data.b)  #Solve the linear system
 
     solver_data.R_int = solver_data.K @ solver_data.r  #Calculate internal forces

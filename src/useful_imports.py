@@ -9,6 +9,7 @@
 import matplotlib.pyplot as plt
 from src.utils import *
 from src.mesh import *
+from src.morph_mesh import morph_mesh
 from src.solver_data import *
 from src.solver import solve
 from src.plot_tools import Plot
