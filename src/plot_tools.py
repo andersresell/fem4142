@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import matplotlib.tri as tri
 from matplotlib.collections import LineCollection
-from matplotlib.widgets import Slider, RadioButtons, CheckButtons, TextBox
+from matplotlib.widgets import Slider, RadioButtons, CheckButtons, TextBox, Button
 import matplotlib.colors as mcolors
 import matplotlib.lines as mlines
 from src.fem_utils import *
@@ -74,6 +74,10 @@ class Plot:
     Includes some GUI features for interactive plotting.
     Simply construct an instance of the class to start the GUI."""
 
+    # Font size settings for GUI
+    LABEL_FONTSIZE = 20  # Axis labels and colorbar labels
+    TICK_FONTSIZE = 16  # Tick labels on axes and colorbar
+
     gray_val = 0.5  # 0=black, 1=white
     cmap_name_gray = mcolors.LinearSegmentedColormap.from_list("uniform_gray", [(gray_val, gray_val, gray_val)] * 2)
     cmap_name_default = "jet"
@@ -86,6 +90,10 @@ class Plot:
         self.set_num_quads_1D_per_element_for_reasonable_plotting(mesh.get_nE())
         self.fig, self.ax = plt.subplots(figsize=(12, 10), dpi=100)
         self.cbar = None
+        self.config = config
+        self.mesh = mesh
+        self.solver_data = solver_data
+        self.save_counter = 0  # Counter for unique filenames
 
         plt.subplots_adjust(left=0.3, bottom=0.25)
 
@@ -109,7 +117,7 @@ class Plot:
 
         radio_contour_type = RadioButtons(plt.axes([0.05, get_vspace_left(0.05), 0.15, 0.05]),
                                           ['none', 'disp', 'stress'],
-                                          active=1)
+                                          active=['none', 'disp', 'stress'].index(config.contour_type))
         radio_contour_type.ax.set_title('Contour type:')
 
         #Problem type specific options:
@@ -123,12 +131,18 @@ class Plot:
             stress_component_options = ['mises', 'xx', 'yy', 'xy']
             arrow_options = ['none']
 
-        radio_disp_component = RadioButtons(plt.axes([0.05, get_vspace_left(0.06), 0.15, 0.06]), disp_component_options)
+        radio_disp_component = RadioButtons(plt.axes([0.05, get_vspace_left(0.06), 0.15, 0.06]),
+                                            disp_component_options,
+                                            active=disp_component_options.index(config.disp_component))
         radio_disp_component.ax.set_title('Disp component:')
         radio_stress_component = RadioButtons(plt.axes([0.05, get_vspace_left(0.07), 0.15, 0.07]),
-                                              stress_component_options)
+                                              stress_component_options,
+                                              active=stress_component_options.index(config.stress_component))
         radio_stress_component.ax.set_title('Stress component:')
-        radio_arrows = RadioButtons(plt.axes([0.05, get_vspace_left(0.07), 0.15, 0.07]), arrow_options)
+        radio_arrows = RadioButtons(plt.axes([0.05, get_vspace_left(0.07), 0.15, 0.07]),
+                                    arrow_options,
+                                    active=arrow_options.index(config.arrow_type))
+        radio_arrows.ax.set_title('Arrow type:')
         radio_arrows.ax.set_title('Arrow type:')
 
         check_buttons = CheckButtons(
@@ -158,6 +172,49 @@ class Plot:
                                     0,
                                     10,
                                     valinit=config.arrow_scale)
+
+        # Add Save Screen button
+        save_button = Button(plt.axes([0.25, get_new_vspace_bottom(), 0.15, 0.03]),
+                             'Save Screen',
+                             color='lightblue',
+                             hovercolor='skyblue')
+
+        def save_screen(event):
+            """Save the current visualization to a high-DPI image file."""
+            import os
+            from datetime import datetime
+
+            # Create exam-tasks directory if it doesn't exist
+            output_dir = '/home/anders/projects/fem4146/exam-tasks'
+            os.makedirs(output_dir, exist_ok=True)
+
+            # Generate filename with timestamp
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f'gui_screenshot_{timestamp}.png'
+            filepath = os.path.join(output_dir, filename)
+
+            # Save with high DPI, capturing only the graphics area (axes + colorbar)
+            # The bbox_inches='tight' will crop to just the axes content
+            print(f"Saving graphics area to: {filepath}")
+
+            # Get the bounding box of the axes and colorbar in figure coordinates
+            # This includes the plot area, axis labels, title, and colorbar
+            extent = self.ax.get_tightbbox(self.fig.canvas.get_renderer())
+
+            # If there's a colorbar, include it in the extent
+            if self.cbar is not None and self.cbar.ax.get_visible():
+                cbar_extent = self.cbar.ax.get_tightbbox(self.fig.canvas.get_renderer())
+                # Combine the extents
+                extent = extent.union([extent, cbar_extent])
+
+            # Convert to inches for saving
+            extent = extent.transformed(self.fig.dpi_scale_trans.inverted())
+
+            # Save just the graphics portion
+            self.fig.savefig(filepath, dpi=600, bbox_inches=extent)
+            print(f"✓ Graphics saved successfully (600 DPI)!")
+
+        save_button.on_clicked(save_screen)
 
         def update(val):
             try:
@@ -338,6 +395,9 @@ class Plot:
         ticks = np.linspace(vmin, vmax, NUM_TICKS)
         self.cbar.set_ticks(ticks)
 
+        # Set colorbar tick label font size
+        self.cbar.ax.tick_params(labelsize=self.TICK_FONTSIZE)
+
         #====================================================================
         # Set axis labels and colorbar label
         #====================================================================
@@ -346,22 +406,22 @@ class Plot:
         elif config.problem_type == PROBLEM_TYPE_PLANE_STRESS:
             if config.contour_type == "disp":
                 if config.disp_component == "mag":
-                    self.cbar.set_label(r"$u^{\mathrm{mag}} = \sqrt{u^2 + v^2}$")
+                    self.cbar.set_label(r"$u^{\mathrm{mag}} = \sqrt{u^2 + v^2}$", fontsize=self.LABEL_FONTSIZE)
                 elif config.disp_component == "u":
-                    self.cbar.set_label(r"$u$")
+                    self.cbar.set_label(r"$u$", fontsize=self.LABEL_FONTSIZE)
                 elif config.disp_component == "v":
-                    self.cbar.set_label(r"$v$")
+                    self.cbar.set_label(r"$v$", fontsize=self.LABEL_FONTSIZE)
                 else:
                     print(f"Error: Unknown displacement component for plotting: {config.disp_component}")
             elif config.contour_type == "stress":
                 if config.stress_component == "mises":
-                    self.cbar.set_label(r"$\sigma^{\mathrm{VM}}$")
+                    self.cbar.set_label(r"$\sigma^{\mathrm{VM}}$", fontsize=self.LABEL_FONTSIZE)
                 elif config.stress_component == "xx":
-                    self.cbar.set_label(r"$\sigma_{\mathrm{xx}}$")
+                    self.cbar.set_label(r"$\sigma_{\mathrm{xx}}$", fontsize=self.LABEL_FONTSIZE)
                 elif config.stress_component == "yy":
-                    self.cbar.set_label(r"$\sigma_{\mathrm{yy}}$")
+                    self.cbar.set_label(r"$\sigma_{\mathrm{yy}}$", fontsize=self.LABEL_FONTSIZE)
                 elif config.stress_component == "xy":
-                    self.cbar.set_label(r"$\sigma_{\mathrm{xy}}$")
+                    self.cbar.set_label(r"$\sigma_{\mathrm{xy}}$", fontsize=self.LABEL_FONTSIZE)
                 else:
                     print(f"Error: Unknown stress component for plotting: {config.stress_component}")
             else:
@@ -370,11 +430,11 @@ class Plot:
             assert config.problem_type == PROBLEM_TYPE_PLATE
             if config.contour_type == "disp":
                 if config.disp_component == "w":
-                    self.cbar.set_label(r"$w$")
+                    self.cbar.set_label(r"$w$", fontsize=self.LABEL_FONTSIZE)
                 elif config.disp_component == "thetax":
-                    self.cbar.set_label(r"$\theta_x$")
+                    self.cbar.set_label(r"$\theta_x$", fontsize=self.LABEL_FONTSIZE)
                 elif config.disp_component == "thetay":
-                    self.cbar.set_label(r"$\theta_y$")
+                    self.cbar.set_label(r"$\theta_y$", fontsize=self.LABEL_FONTSIZE)
                 else:
                     print(f"Error: Unknown displacement component for plotting: {config.disp_component}")
             elif config.contour_type == "stress":
@@ -426,17 +486,18 @@ class Plot:
         #====================================================================
         if config.arrow_type != "none":
             if config.problem_type == PROBLEM_TYPE_PLANE_STRESS:
+                show_max_norm = False
                 if config.arrow_type == "disp":
                     self.plot_arrows(x_nodes, y_nodes, u, v, "disp", "blue", domain_scale, config.arrow_scale)
                 elif config.arrow_type == "external forces":
                     Rx_ext, Ry_ext = unpack_solution(config, solver_data.R_ext)
                     self.plot_arrows(x_nodes, y_nodes, Rx_ext, Ry_ext, "external forces", "red", domain_scale,
-                                     config.arrow_scale, True)
+                                     config.arrow_scale, show_max_norm)
                 elif config.arrow_type == "reaction forces":
                     R_rea = solver_data.R_int - solver_data.R_ext
                     Rx_rea, Ry_rea = unpack_solution(config, R_rea)
                     self.plot_arrows(x_nodes, y_nodes, Rx_rea, Ry_rea, "reaction forces", "green", domain_scale,
-                                     config.arrow_scale, True)
+                                     config.arrow_scale, show_max_norm)
                 else:
                     print(f"Unknown arrow type for plotting: {config.arrow_type}")
                     exit(1)
@@ -455,8 +516,11 @@ class Plot:
             fig.suptitle(f"Mindlin plate problem: {element_type_to_str[config.element_type]} element")
         self.ax.set_aspect('equal')
         self.ax.axis('equal')
-        self.ax.set_xlabel(r"$x$")
-        self.ax.set_ylabel(r"$y$")
+        self.ax.set_xlabel(r"$x$", fontsize=self.LABEL_FONTSIZE)
+        self.ax.set_ylabel(r"$y$", fontsize=self.LABEL_FONTSIZE)
+
+        # Set axis tick label font size
+        self.ax.tick_params(axis='both', which='major', labelsize=self.TICK_FONTSIZE)
 
     def plot_arrows(self, x, y, field_x, field_y, label, color, domain_scale, user_scale, show_max_norm=False):
         #only plot arrows with a non negligible magnitude
@@ -662,7 +726,7 @@ class Plot:
         if not config.show_mesh:
             return
         segments = [[[x_vert[a], y_vert[a]], [x_vert[b], y_vert[b]]] for a, b in outlines]
-        line_collection = LineCollection(segments, colors='black', linewidths=0.5)
+        line_collection = LineCollection(segments, colors='black', linewidths=1.0)
         self.ax.add_collection(line_collection)
 
     def plot_bcs(self, config: Config, mesh: Mesh, x_nodes, y_nodes, domain_scale):

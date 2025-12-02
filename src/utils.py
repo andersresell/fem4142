@@ -69,10 +69,10 @@ class Config:
         self.disp_scaling = 1  #Scaling factor for displacements
         self.show_node_labels = False
         self.show_bcs = False
-        self.contour_type = "disp"  #Displacement or stress
-        self.disp_component = "mag"
-        self.stress_component = "mises"
-        self.arrow_type = "external forces"  #external forces, reaction forces, disp, none
+        self.contour_type = "disp"  # Displacement or stress (default: "disp")
+        self.disp_component = "mag"  # Default displacement component to show
+        self.stress_component = "mises"  # Default stress component to show
+        self.arrow_type = "none"  # external forces, reaction forces, disp, none (default: "none")
         self.node_scale = 1  #Scales nodes and node labels
         self.arrow_scale = 1
         self.specify_contour_limits = False
@@ -88,5 +88,11 @@ def create_config(E, nu, h, element_type, problem_type) -> Config:
     config.h = h
     config.element_type = element_type
     config.problem_type = problem_type
+
+    # Set problem-specific defaults
+    if problem_type == PROBLEM_TYPE_PLANE_STRESS:
+        config.disp_component = "mag"  # Default for plane stress
+    else:  # PROBLEM_TYPE_PLATE
+        config.disp_component = "w"  # Default for plate problems
 
     return config

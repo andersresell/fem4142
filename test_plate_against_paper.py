@@ -9,10 +9,10 @@ if __name__ == "__main__":
     Ly = L / 2
     q = -1e6
     problem_type = PROBLEM_TYPE_PLATE
-    nEx = 16
-    nEy = 16
-    plot_and_interrupt = False
+    nEx = 4
+    nEy = 4
     plot_and_interrupt = True
+    plot_and_interrupt = False
     # thickness_ratios = np.linspace(10, 1e6, 5)
     # thickness_ratios = [10, 20, 30, 50, 100, 200, 300, 500, 1000, 1e6]
     thickness_ratios = np.logspace(1, 6, 15)
@@ -23,7 +23,8 @@ if __name__ == "__main__":
     element_types = [
         ELEMENT_TYPE_Q4, ELEMENT_TYPE_Q4R, ELEMENT_TYPE_Q8R, ELEMENT_TYPE_Q8, ELEMENT_TYPE_Q9, ELEMENT_TYPE_Q16
     ]
-    element_types = [ELEMENT_TYPE_Q9]
+    element_types = [ELEMENT_TYPE_Q4R, ELEMENT_TYPE_Q4, ELEMENT_TYPE_Q8, ELEMENT_TYPE_Q16]
+    # element_types = [ELEMENT_TYPE_Q9]
     for element_type in element_types:
         wc_over_wc_k = []
         for tr in thickness_ratios:
