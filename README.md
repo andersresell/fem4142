@@ -3,7 +3,7 @@
 ---
 
 ## Current features:
-- 2D structured mesh generator for Q4, Q8, Q9, and Q12 quadrilateral elements
+- 2D structured mesh generator for Q4, Q8, Q9, and Q16 quadrilateral elements
 - Plane stress elements and plate elements (Mindlin)
 - Consistent load integration either on faces or edges, where the load is specified as a function of x, y
 - Zero or prescribed displacement boundary conditions
