@@ -4,12 +4,37 @@ from fem.mesh import Mesh
 from fem.fem_utils import *
 
 
+def calc_D_plane_stress(config: Config):
+    """Material matrix for plane stress: sigma = D * epsilon, where sigma = (sigma_xx, sigma_yy, sigma_xy)"""
+    E = config.E
+    nu = config.nu
+    #fmt: off
+    return E / (1 - nu**2) * np.array([[1,     nu,     0],
+                                       [nu,    1,      0],
+                                       [0,     0,  (1 - nu) / 2]])
+    #fmt: on
+
+
+def calc_D_plate(config: Config):
+    """Material matrices for a Mindlin plate. Bending: M = D_b * kappa, where M = (M_xx, M_yy, M_xy).
+    Shear: V = D_s * gamma, where V = (V_x, V_y). D_s includes the shear correction factor 5/6."""
+    E = config.E
+    nu = config.nu
+    h = config.h
+    #fmt: off
+    D_b = E * h**3 / (12 * (1 - nu**2)) * np.array([[1,   nu, 0],
+                                                    [nu,  1,  0],
+                                                    [0,   0,  (1 - nu) / 2]])
+    #fmt: on
+    G = E / (2 * (1 + nu))
+    D_s = 5 / 6 * h * G * np.identity(2)
+    return D_b, D_s
+
+
 def calc_Ke_plane_stress(config: Config, mesh: Mesh, e):
     assert config.problem_type == ProblemType.PLANE_STRESS
     assert e >= 0 and e < mesh.get_nE()
     element_type = config.element_type
-    E = config.E
-    nu = config.nu
     thickness = config.h
     elements = mesh.elements
     x_l = mesh.nodes[elements[e, :], 0]
@@ -17,11 +42,7 @@ def calc_Ke_plane_stress(config: Config, mesh: Mesh, e):
     nNl = ELEMENT_TRAITS[element_type].nNl
     assert len(x_l) == nNl and len(x_l) == nNl
 
-    #fmt: off
-    D = E / (1 - nu**2) * np.array([[1,     nu,     0],
-                                    [nu,    1,      0],
-                                    [0,     0,  (1 - nu) / 2]])
-    #fmt: on
+    D = calc_D_plane_stress(config)
 
     nGauss = ELEMENT_TRAITS[element_type].nGauss_1D
     arr_xi = shape_functions.get_arr_xi(nGauss)
@@ -103,23 +124,13 @@ def calc_Ke_mindlin_plate(config: Config, mesh: Mesh, e):
     assert config.problem_type == ProblemType.PLATE
     assert e >= 0 and e < mesh.get_nE()
     element_type = config.element_type
-    E = config.E
-    nu = config.nu
-    h = config.h
     elements = mesh.elements
     x_l = mesh.nodes[elements[e, :], 0]
     y_l = mesh.nodes[elements[e, :], 1]
     nNl = ELEMENT_TRAITS[element_type].nNl
     assert len(x_l) == nNl and len(x_l) == nNl
 
-    #fmt: off
-    D = E * h**3 / (12 * (1 - nu**2)) * np.array([[1,   nu, 0],
-                                                  [nu,  1,  0],
-                                                  [0,   0,  (1 - nu) / 2]])
-    #fmt: on
-    Cs = E / (2 * (1 + nu)) * np.identity(2)
-
-    hs = 5 / 6 * h
+    D_b, D_s = calc_D_plate(config)
 
     nGauss = ELEMENT_TRAITS[element_type].nGauss_1D
     arr_xi = shape_functions.get_arr_xi(nGauss)
@@ -147,6 +158,6 @@ def calc_Ke_mindlin_plate(config: Config, mesh: Mesh, e):
                 Bs[:, 3 * k:3 * k + 3] = np.array([[dNdy[k], -N[k], 0    ],
                                                    [dNdx[k],  0,    N[k] ]])
                 #fmt: on
-            Ke += (Bb.T @ D @ Bb + hs * Bs.T @ Cs @ Bs) * detJ * weight
+            Ke += (Bb.T @ D_b @ Bb + Bs.T @ D_s @ Bs) * detJ * weight
 
     return Ke

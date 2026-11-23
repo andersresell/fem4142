@@ -39,8 +39,7 @@ def test_patch_test_uniaxial_tension_on_distorted_mesh(element_type):
 
     sample_points = [(-1.0, -1.0), (0.2, 0.7), (1.0, 0.0)]
     for e in range(mesh.get_nE()):
-        sigma = stress_recovery.recover_stress_plane_stress_consistent(e, config, mesh, mesh.nodes, u, v,
-                                                                       sample_points)
+        sigma = stress_recovery.calc_stress_consistent(config, mesh, solver_data.r, e, sample_points)
         assert np.allclose(sigma, [sigma0, 0.0, 0.0], atol=1e-9)
 
 

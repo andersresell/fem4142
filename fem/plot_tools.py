@@ -3,6 +3,7 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 import matplotlib.tri as tri
 from matplotlib.collections import LineCollection
+from matplotlib.text import Text
 from matplotlib.transforms import Bbox
 from matplotlib.widgets import Slider, RadioButtons, CheckButtons, TextBox, Button
 import matplotlib.colors as mcolors
@@ -12,183 +13,384 @@ import fem.stress_recovery as stress_recovery
 from fem.mesh import Mesh
 from fem.utils import Config
 from fem.solver_data import *
-import fem.shape_functions as shape_functions
+
+#The fields that can be shown as contours, with the labels that are used in the GUI and on the colorbar
+FIELD_LABELS = {
+    "none": "none",
+    "u": r"$u$",
+    "v": r"$v$",
+    "u_mag": r"$|\mathbf{u}| = \sqrt{u^2 + v^2}$",
+    "sigma_xx": r"$\sigma_{xx}$",
+    "sigma_yy": r"$\sigma_{yy}$",
+    "sigma_xy": r"$\sigma_{xy}$",
+    "sigma_vm": r"$\sigma_{\mathrm{vM}}$ (von Mises)",
+    "w": r"$w$",
+    "theta_x": r"$\theta_x$",
+    "theta_y": r"$\theta_y$",
+    "M_xx": r"$M_{xx}$",
+    "M_yy": r"$M_{yy}$",
+    "M_xy": r"$M_{xy}$",
+    "V_x": r"$V_x$",
+    "V_y": r"$V_y$",
+}
+
+#The column in the solution (one row per node) that each displacement field is taken from
+DOF_FIELDS = {"u": 0, "v": 1, "w": 0, "theta_x": 1, "theta_y": 2}
+
+COLORMAP = plt.get_cmap("turbo").with_extremes(over="lightgrey", under="lightgrey")
+GRAY_COLORMAP = mcolors.ListedColormap(["grey"])  #Used when no field is shown
 
 
-def get_mesh_bounds(nodes):
-    x_min = np.min(nodes[:, 0])
-    x_max = np.max(nodes[:, 0])
-    y_min = np.min(nodes[:, 1])
-    y_max = np.max(nodes[:, 1])
-    return x_min, x_max, y_min, y_max
+def get_field_names(problem_type):
+    """The fields that can be plotted for each problem type"""
+    if problem_type == ProblemType.PLANE_STRESS:
+        return ["none", "u", "v", "u_mag", "sigma_xx", "sigma_yy", "sigma_xy", "sigma_vm"]
+    else:
+        assert problem_type == ProblemType.PLATE
+        return ["none", "w", "theta_x", "theta_y", "M_xx", "M_yy", "M_xy", "V_x", "V_y"]
 
 
-def get_L_domain(nodes):
-    x_min, x_max, y_min, y_max = get_mesh_bounds(nodes)
-    return max(x_max - x_min, y_max - y_min)
+def is_stress_field(field):
+    return field not in DOF_FIELDS and field not in ["none", "u_mag"]
+
+
+#====================================================================
+# Contour plots of fields
+#====================================================================
+
+
+def get_num_subdivisions(nE):
+    """Each element is drawn as an n x n grid of small quads, so that curved elements and fields look smooth.
+    We use many small quads when there are few elements, and fewer when there are many, so that the plot stays fast."""
+    TARGET_NUM_POINTS = 20000  #Plot points in total
+    return int(np.clip(np.sqrt(TARGET_NUM_POINTS / nE) - 1, 2, 30))
+
+
+def create_plot_grid(n):
+    """Creates the n x n grid of small quads that each element is drawn with (each quad is two triangles).
+    Returns the natural coordinates of the grid points, the triangles and the outline of the element,
+    given by the local numbers of the grid points, which are the same for all elements."""
+    xi_eta = [(-1 + 2 * i / n, -1 + 2 * j / n) for i in range(n + 1) for j in range(n + 1)]
+
+    def point(i, j):
+        return i * (n + 1) + j
+
+    triangles = []
+    for i in range(n):
+        for j in range(n):
+            triangles.append([point(i, j), point(i + 1, j), point(i + 1, j + 1)])
+            triangles.append([point(i, j), point(i + 1, j + 1), point(i, j + 1)])
+    #The outline goes counter-clockwise around the element, and ends where it started
+    outline = ([point(i, 0) for i in range(n)] + [point(n, j) for j in range(n)] +
+               [point(n - i, n) for i in range(n)] + [point(0, n - j) for j in range(n + 1)])
+    return xi_eta, np.array(triangles), np.array(outline)
+
+
+def calc_field_in_element(config: Config, mesh: Mesh, solver_data: SolverData, field, e, N, dNdxi, dNdeta,
+                          nodal_stress_L2):
+    """Calculates the field in element e at the points where the shape functions N, dNdxi, dNdeta are given"""
+    NUM_DOFS = get_num_dofs_from_problem_type(config.problem_type)
+    nodeIDs = mesh.elements[e, :]
+    r_e = solver_data.r.reshape(-1, NUM_DOFS)[nodeIDs]  #One row per element node: (u, v) or (w, thetax, thetay)
+
+    if field == "none":
+        return np.zeros(len(N))
+    if field in DOF_FIELDS:
+        return N @ r_e[:, DOF_FIELDS[field]]
+    if field == "u_mag":
+        return np.sqrt((N @ r_e[:, 0])**2 + (N @ r_e[:, 1])**2)
+
+    #The rest of the fields are stresses
+    if config.stress_recovery == "consistent":
+        stress = stress_recovery.calc_element_stress(config, mesh, solver_data.r, e, N, dNdxi, dNdeta)
+    else:
+        assert config.stress_recovery == "L2"
+        stress = N @ nodal_stress_L2[nodeIDs]  #Interpolate the nodal stresses with the shape functions
+    if field == "sigma_vm":
+        return stress_recovery.calc_von_mises(stress)
+    return stress[:, stress_recovery.get_stress_names(config.problem_type).index(field)]
+
+
+def plot_field(ax, config: Config, mesh: Mesh, solver_data: SolverData, field, nodal_stress_L2=None):
+    """Draws a field (e.g. "u_mag" or "sigma_xx", see get_field_names) as a contour plot on the mesh, in the
+    matplotlib axes ax. For plane stress, the mesh is deformed by the displacements times config.disp_scaling.
+    Stresses are calculated with config.stress_recovery ("consistent" or "L2"). The element edges are drawn if
+    config.show_mesh is True. Returns the contour plot, which can be used to add a colorbar. Example:
+
+        fig, ax = plt.subplots()
+        contours = plot_field(ax, config, mesh, solver_data, "sigma_xx")
+        fig.colorbar(contours, ax=ax)
+        plt.show()
+
+    (If the L2 stresses are already calculated with stress_recovery.calc_nodal_stress_L2, they can be given as
+    nodal_stress_L2, so that they don't need to be calculated again.)"""
+    field_names = get_field_names(config.problem_type)
+    if field not in field_names:
+        raise ValueError(f"Unknown field '{field}' for {config.problem_type.name}. Available: {', '.join(field_names)}")
+    if config.stress_recovery not in ["consistent", "L2"]:
+        raise ValueError(f"config.stress_recovery must be 'consistent' or 'L2', got '{config.stress_recovery}'")
+    if is_stress_field(field) and config.stress_recovery == "L2" and nodal_stress_L2 is None:
+        nodal_stress_L2 = stress_recovery.calc_nodal_stress_L2(config, mesh, solver_data.r)
+
+    #The shape functions at the plot points are the same for all elements, so we calculate them only once
+    xi_eta, triangles, outline = create_plot_grid(get_num_subdivisions(mesh.get_nE()))
+    N, dNdxi, dNdeta = stress_recovery.calc_N_at_points(xi_eta, config.element_type)
+
+    #Calculate the position of the plot points and the field values there, element by element
+    nE = mesh.get_nE()
+    x = np.zeros((nE, len(xi_eta)))
+    y = np.zeros_like(x)
+    values = np.zeros_like(x)
+    NUM_DOFS = get_num_dofs_from_problem_type(config.problem_type)
+    r = solver_data.r.reshape(-1, NUM_DOFS)  #One row per node
+    for e in range(nE):
+        nodeIDs = mesh.elements[e, :]
+        x[e] = N @ mesh.nodes[nodeIDs, 0]
+        y[e] = N @ mesh.nodes[nodeIDs, 1]
+        if config.problem_type == ProblemType.PLANE_STRESS:  #Show the deformed shape
+            x[e] += config.disp_scaling * (N @ r[nodeIDs, 0])
+            y[e] += config.disp_scaling * (N @ r[nodeIDs, 1])
+        values[e] = calc_field_in_element(config, mesh, solver_data, field, e, N, dNdxi, dNdeta, nodal_stress_L2)
+
+    #The plot points of element e are numbered from e * (number of plot points per element)
+    first_point_of_element = len(xi_eta) * np.arange(nE)
+    all_triangles = (triangles[None, :, :] + first_point_of_element[:, None, None]).reshape(-1, 3)
+    triangulation = tri.Triangulation(x.ravel(), y.ravel(), all_triangles)
+    if field == "none":
+        contours = ax.tripcolor(triangulation, values.ravel(), shading="gouraud", cmap=GRAY_COLORMAP)
+    else:
+        contours = ax.tripcolor(triangulation, values.ravel(), shading="gouraud", cmap=COLORMAP)
+
+    if config.show_mesh:
+        element_outlines = [np.column_stack([x[e, outline], y[e, outline]]) for e in range(nE)]
+        ax.add_collection(LineCollection(element_outlines, colors="black", linewidths=1.0))
+    ax.set_aspect("equal")
+    return contours
+
+
+#====================================================================
+# The GUI
+#====================================================================
+
+
+def get_mesh_size(nodes):
+    return max(np.ptp(nodes[:, 0]), np.ptp(nodes[:, 1]))
+
+
+def maximize_window(fig):
+    """Makes the window fill the screen. How this is done depends on the GUI toolkit that matplotlib uses,
+    so we try the common ones, and keep the window as it is if none of them works."""
+    window = getattr(fig.canvas.manager, "window", None)
+    ways_to_maximize = [
+        lambda: window.state("zoomed"),  #Tk on Windows and macOS
+        lambda: window.attributes("-zoomed", True),  #Tk on Linux
+        lambda: window.showMaximized(),  #Qt
+        lambda: window.maximize(),  #GTK
+    ]
+    for maximize in ways_to_maximize:
+        try:
+            maximize()
+            return
+        except Exception:
+            pass
 
 
 class Plot:
-    """Class for plotting 2D finite element meshes and results. 
-    Includes some GUI features for interactive plotting.
-    Simply construct an instance of the class to start the GUI."""
+    """The GUI, which shows the mesh and the results, with buttons for choosing what to show.
+    Simply construct an instance of the class to start the GUI: Plot(config, mesh, solver_data)"""
 
-    # Font size settings for GUI
-    LABEL_FONTSIZE = 20  # Axis labels and colorbar labels
-    TICK_FONTSIZE = 16  # Tick labels on axes and colorbar
-
-    gray_val = 0.5  # 0=black, 1=white
-    cmap_name_gray = mcolors.LinearSegmentedColormap.from_list("uniform_gray", [(gray_val, gray_val, gray_val)] * 2)
-    cmap_name_default = "turbo"
-    # cmap_default = "plasma"
-    plt.rcParams.update({
-        'font.size': 11  # or any desired size
-    })
+    #Font sizes for a window that is DESIGN_HEIGHT inches tall. They are scaled with the actual height of
+    #the window, so that the GUI looks the same on small and large screens.
+    DESIGN_HEIGHT = 10
+    FONT_SIZE = 11  #Buttons and other widgets
+    LABEL_FONTSIZE = 20  #Axis labels and colorbar label
+    TICK_FONTSIZE = 16  #Numbers on the axes and the colorbar
 
     def __init__(self, config: Config, mesh: Mesh, solver_data: SolverData):
-        self.set_num_quads_1D_per_element_for_reasonable_plotting(mesh.get_nE())
-        self.fig, self.ax = plt.subplots(figsize=(12, 10), dpi=100)
-        self.cbar = None
         self.config = config
         self.mesh = mesh
         self.solver_data = solver_data
+        self.nodal_stress_L2 = None  #Calculated the first time an L2 stress is shown
+        self.cbar = None
 
+        self.field_names = get_field_names(config.problem_type)
+        if config.contour not in self.field_names:
+            raise ValueError(f"Unknown config.contour '{config.contour}' for {config.problem_type.name}. "
+                             f"Available: {', '.join(self.field_names)}")
+
+        self.fig, self.ax = plt.subplots(figsize=(11, 8))
         plt.subplots_adjust(left=0.3, bottom=0.25)
+        self.create_widgets()
+        problem_name = "Plane stress" if config.problem_type == ProblemType.PLANE_STRESS else "Mindlin plate"
+        self.title = self.fig.suptitle(f"{problem_name} problem: {config.element_type.name} element")
 
-        VSPACE_BETWEEN_WIDGETS = 0.04
-        self.curr_vspace_left = 0.9
+        self.fig.canvas.mpl_connect("resize_event", self.on_resize)
+        maximize_window(self.fig)
+        self.update()
+        plt.show()
 
-        def get_vspace_left(height):
-            vspace = self.curr_vspace_left - height / 2
-            assert self.curr_vspace_left > 0.1
-            self.curr_vspace_left -= (height + VSPACE_BETWEEN_WIDGETS)
-            return vspace
+    def create_widgets(self):
+        config = self.config
 
-        self.curr_vspace_bottom_index = 0
-        vspaces_bottom = np.linspace(0.15, 0.05, 4)
+        #The widgets on the left side are placed from the top and down
+        self.top_of_next_widget = 0.93
 
-        def get_new_vspace_bottom():
-            assert self.curr_vspace_bottom_index < len(vspaces_bottom)
-            vspace = vspaces_bottom[self.curr_vspace_bottom_index]
-            self.curr_vspace_bottom_index += 1
-            return vspace
+        def get_widget_axes(left, width, height):
+            ax = plt.axes([left, self.top_of_next_widget - height, width, height])
+            self.top_of_next_widget -= height + 0.035
+            return ax
 
-        #Problem type specific options:
+        self.contour_labels = [FIELD_LABELS[field] for field in self.field_names]
+        self.radio_contour = RadioButtons(get_widget_axes(0.03, 0.2, 0.22), self.contour_labels,
+                                          active=self.field_names.index(config.contour))
+        self.radio_contour.ax.set_title("Contour:")
+
+        recovery_options = ["consistent", "L2"]
+        self.radio_recovery = RadioButtons(get_widget_axes(0.03, 0.2, 0.05), recovery_options,
+                                           active=recovery_options.index(config.stress_recovery))
+        self.radio_recovery.ax.set_title("Stress recovery:")
+
         if config.problem_type == ProblemType.PLANE_STRESS:
-            contour_type_options = ['none', 'disp', 'stress']
-            disp_component_options = ['mag', 'u', 'v']
-            stress_component_options = ['mises', 'xx', 'yy', 'xy']
-            arrow_options = ['none', 'disp', 'external forces', 'reaction forces']
+            arrow_options = ["none", "disp", "external forces", "reaction forces"]
         else:
-            assert config.problem_type == ProblemType.PLATE
-            #Stress plotting is not implemented for plates yet, so that option is not shown
-            contour_type_options = ['none', 'disp']
-            disp_component_options = ['w', 'thetax', 'thetay']
-            stress_component_options = ['mises', 'xx', 'yy', 'xy']
-            arrow_options = ['none']
-            if config.contour_type == 'stress':
-                raise ValueError("Stress contours are not implemented for plate problems yet. "
-                                 "Use config.contour_type = 'disp' instead.")
+            arrow_options = ["none"]  #Arrows are not implemented for plates
+        self.radio_arrows = RadioButtons(get_widget_axes(0.03, 0.2, 0.02 * len(arrow_options)), arrow_options,
+                                         active=arrow_options.index(config.arrow_type))
+        self.radio_arrows.ax.set_title("Arrows:")
 
-        radio_contour_type = RadioButtons(plt.axes([0.05, get_vspace_left(0.05), 0.15, 0.05]),
-                                          contour_type_options,
-                                          active=contour_type_options.index(config.contour_type))
-        radio_contour_type.ax.set_title('Contour type:')
-
-        radio_disp_component = RadioButtons(plt.axes([0.05, get_vspace_left(0.06), 0.15, 0.06]),
-                                            disp_component_options,
-                                            active=disp_component_options.index(config.disp_component))
-        radio_disp_component.ax.set_title('Disp component:')
-        radio_stress_component = RadioButtons(plt.axes([0.05, get_vspace_left(0.07), 0.15, 0.07]),
-                                              stress_component_options,
-                                              active=stress_component_options.index(config.stress_component))
-        radio_stress_component.ax.set_title('Stress component:')
-        radio_arrows = RadioButtons(plt.axes([0.05, get_vspace_left(0.07), 0.15, 0.07]),
-                                    arrow_options,
-                                    active=arrow_options.index(config.arrow_type))
-        radio_arrows.ax.set_title('Arrow type:')
-
-        check_buttons = CheckButtons(
-            plt.axes([0.05, get_vspace_left(0.07), 0.15,
-                      0.07]), ['show node labels', 'specify contour limits', 'show mesh', 'show boundary conditions'],
+        self.check_buttons = CheckButtons(
+            get_widget_axes(0.03, 0.2, 0.08),
+            ["show node labels", "specify contour limits", "show mesh", "show boundary conditions"],
             [config.show_node_labels, config.specify_contour_limits, config.show_mesh, config.show_bcs])
-        check_buttons.ax.set_title('Options:')
+        self.check_buttons.ax.set_title("Options:")
 
-        self.box_contour_max = TextBox(plt.axes([0.1, get_vspace_left(0.03), 0.07, 0.03]),
-                                       'contour lim max ',
-                                       initial=config.contour_max)
-        self.box_contour_min = TextBox(plt.axes([0.1, get_vspace_left(0.03), 0.07, 0.03]),
-                                       'contour lim min ',
-                                       initial=config.contour_min)
+        self.box_contour_max = TextBox(get_widget_axes(0.13, 0.08, 0.03), "contour max ", initial=config.contour_max)
+        self.box_contour_min = TextBox(get_widget_axes(0.13, 0.08, 0.03), "contour min ", initial=config.contour_min)
+        self.box_disp_scale = TextBox(get_widget_axes(0.13, 0.08, 0.03), "disp scale ", initial=config.disp_scaling)
 
-        box_disp_scale = TextBox(plt.axes([0.1, get_vspace_left(0.03), 0.04, 0.03]),
-                                 'disp scale ',
-                                 initial=config.disp_scaling)
-
-        slider_node_scale = Slider(plt.axes([0.25, get_new_vspace_bottom(), 0.50, 0.03]),
-                                   'node size',
-                                   0,
-                                   10,
-                                   valinit=config.node_scale)
-        slider_arrow_scale = Slider(plt.axes([0.25, get_new_vspace_bottom(), 0.50, 0.03]),
-                                    'arrow size',
-                                    0,
-                                    10,
-                                    valinit=config.arrow_scale)
-
-        self.save_button = Button(plt.axes([0.25, get_new_vspace_bottom(), 0.15, 0.03]),
-                                  'Save Screen',
-                                  color='lightblue',
-                                  hovercolor='skyblue')
+        #The widgets at the bottom
+        self.slider_node_scale = Slider(plt.axes([0.4, 0.13, 0.45, 0.03]), "node size", 0, 10,
+                                        valinit=config.node_scale)
+        self.slider_arrow_scale = Slider(plt.axes([0.4, 0.08, 0.45, 0.03]), "arrow size", 0, 10,
+                                         valinit=config.arrow_scale)
+        self.save_button = Button(plt.axes([0.4, 0.02, 0.15, 0.04]), "Save Screen", color="lightblue",
+                                  hovercolor="skyblue")
         self.save_button.on_clicked(self.save_screen)
 
-        def update(val):
+        for radio in [self.radio_contour, self.radio_recovery, self.radio_arrows]:
+            radio.on_clicked(self.update)
+        self.check_buttons.on_clicked(self.update)
+        for box in [self.box_contour_max, self.box_contour_min, self.box_disp_scale]:
+            box.on_submit(self.update)
+        self.slider_node_scale.on_changed(self.update)
+        self.slider_arrow_scale.on_changed(self.update)
+
+        #All the text in the widgets, so that the font size can be changed when the window changes size
+        widget_axes = [
+            self.radio_contour.ax, self.radio_recovery.ax, self.radio_arrows.ax, self.check_buttons.ax,
+            self.box_contour_max.ax, self.box_contour_min.ax, self.box_disp_scale.ax, self.slider_node_scale.ax,
+            self.slider_arrow_scale.ax, self.save_button.ax
+        ]
+        self.widget_texts = [text for widget_ax in widget_axes for text in widget_ax.findobj(Text)]
+
+    def read_widgets(self):
+        """Copies the choices in the GUI to config"""
+        config = self.config
+        config.contour = self.field_names[self.contour_labels.index(self.radio_contour.value_selected)]
+        config.stress_recovery = self.radio_recovery.value_selected
+        config.arrow_type = self.radio_arrows.value_selected
+        config.show_node_labels, config.specify_contour_limits, config.show_mesh, config.show_bcs = \
+            self.check_buttons.get_status()
+        config.node_scale = self.slider_node_scale.val
+        config.arrow_scale = self.slider_arrow_scale.val
+        for box, name, default in [(self.box_disp_scale, "disp_scaling", 1.0), (self.box_contour_min, "contour_min", 0.0),
+                                   (self.box_contour_max, "contour_max", 1.0)]:
             try:
-                config.disp_scaling = float(box_disp_scale.text)
+                setattr(config, name, float(box.text))
             except ValueError:
-                print("Invalid input for displacement scaling. Using default value.")
-                config.disp_scaling = 1.0
+                print(f"Invalid input for {name}: '{box.text}'. Using {default} instead.")
+                setattr(config, name, default)
 
-            config.contour_type = radio_contour_type.value_selected
-            config.disp_component = radio_disp_component.value_selected
-            config.stress_component = radio_stress_component.value_selected
-            config.arrow_type = radio_arrows.value_selected
-            config.node_scale = slider_node_scale.val
-            config.arrow_scale = slider_arrow_scale.val
-            config.show_node_labels = check_buttons.get_status()[0]
-            config.specify_contour_limits = check_buttons.get_status()[1]
-            config.show_mesh = check_buttons.get_status()[2]
-            config.show_bcs = check_buttons.get_status()[3]
+    def update(self, event=None):
+        """Reads the choices in the GUI and draws everything again"""
+        self.read_widgets()
+        config = self.config
+        self.ax.cla()
 
-            try:
-                config.contour_min = float(self.box_contour_min.text)
-            except ValueError:
-                print("Invalid input for contour min. Using default value.")
-                config.contour_min = 0.0
+        #====================================================================
+        # Contour plot. The L2 stresses are only calculated once.
+        #====================================================================
+        if is_stress_field(config.contour) and config.stress_recovery == "L2" and self.nodal_stress_L2 is None:
+            self.nodal_stress_L2 = stress_recovery.calc_nodal_stress_L2(config, self.mesh, self.solver_data.r)
+        contours = plot_field(self.ax, config, self.mesh, self.solver_data, config.contour, self.nodal_stress_L2)
+        self.update_contour_limits_and_colorbar(contours)
 
-            try:
-                config.contour_max = float(self.box_contour_max.text)
-            except ValueError:
-                print("Invalid input for contour max. Using default value.")
-                config.contour_max = 1.0
+        #====================================================================
+        # Nodes, arrows and boundary conditions
+        #====================================================================
+        if config.problem_type == ProblemType.PLANE_STRESS:
+            u, v = unpack_solution(config, self.solver_data.r)
+            x_nodes = self.mesh.nodes[:, 0] + config.disp_scaling * u
+            y_nodes = self.mesh.nodes[:, 1] + config.disp_scaling * v
+        else:
+            x_nodes = self.mesh.nodes[:, 0]
+            y_nodes = self.mesh.nodes[:, 1]
+        domain_scale = 20 / np.sqrt(self.mesh.get_nN())  #Smaller nodes and arrows when there are many nodes
+        self.plot_nodes(x_nodes, y_nodes, domain_scale)
+        self.plot_arrow_field(x_nodes, y_nodes, domain_scale)
+        self.plot_bcs(config, self.mesh, x_nodes, y_nodes, domain_scale)
 
-            self.ax.cla()
-            self.plot_2d(config, mesh, solver_data)
-            self.fig.canvas.draw_idle()
+        self.ax.set_xlabel(r"$x$")
+        self.ax.set_ylabel(r"$y$")
+        self.apply_font_sizes()
+        self.fig.canvas.draw_idle()
 
-        box_disp_scale.on_submit(update)
-        slider_node_scale.on_changed(update)
-        slider_arrow_scale.on_changed(update)
-        radio_contour_type.on_clicked(update)
-        radio_disp_component.on_clicked(update)
-        radio_stress_component.on_clicked(update)
-        radio_arrows.on_clicked(update)
-        check_buttons.on_clicked(update)
-        self.box_contour_max.on_submit(update)
-        self.box_contour_min.on_submit(update)
+    def update_contour_limits_and_colorbar(self, contours):
+        config = self.config
+        if config.contour == "none":
+            if self.cbar is not None:
+                self.cbar.ax.set_visible(False)
+            return
 
-        update(None)  # initial draw
-        plt.show()
+        if config.specify_contour_limits:
+            contours.set_clim(config.contour_min, config.contour_max)
+        else:
+            #Show the limits in the text boxes. The events must be switched off while doing this, since
+            #changing the text otherwise triggers update(), which would draw the whole plot again.
+            vmin, vmax = contours.get_clim()
+            for text_box, value in [(self.box_contour_min, vmin), (self.box_contour_max, vmax)]:
+                text_box.eventson = False
+                text_box.set_val(f"{value:.3e}")
+                text_box.eventson = True
+
+        if self.cbar is None:
+            self.cbar = self.fig.colorbar(contours, ax=self.ax)
+        self.cbar.ax.set_visible(True)
+        self.cbar.update_normal(contours)
+        vmin, vmax = contours.get_clim()
+        self.cbar.set_ticks(np.linspace(vmin, vmax, 10))  #Uniformly spaced ticks
+        self.cbar.set_label(FIELD_LABELS[config.contour])
+
+    def apply_font_sizes(self):
+        """Sets all font sizes in proportion to the height of the window"""
+        scale = self.fig.get_size_inches()[1] / self.DESIGN_HEIGHT
+        for text in self.widget_texts:
+            text.set_fontsize(self.FONT_SIZE * scale)
+        self.title.set_fontsize(1.2 * self.FONT_SIZE * scale)
+        self.ax.xaxis.label.set_fontsize(self.LABEL_FONTSIZE * scale)
+        self.ax.yaxis.label.set_fontsize(self.LABEL_FONTSIZE * scale)
+        self.ax.tick_params(labelsize=self.TICK_FONTSIZE * scale)
+        if self.cbar is not None:
+            self.cbar.ax.yaxis.label.set_fontsize(self.LABEL_FONTSIZE * scale)
+            self.cbar.ax.tick_params(labelsize=self.TICK_FONTSIZE * scale)
+        legend = self.ax.get_legend()
+        if legend is not None:
+            for text in legend.get_texts():
+                text.set_fontsize(self.FONT_SIZE * scale)
+
+    def on_resize(self, event):
+        self.apply_font_sizes()
+        self.fig.canvas.draw_idle()
 
     def save_screen(self, event=None):
         """Saves the plot area (the axes and the colorbar, without the GUI widgets) as a high resolution
@@ -206,190 +408,35 @@ class Plot:
         self.fig.savefig(filepath, dpi=600, bbox_inches=extent)
         print(f"Saved the plot to {filepath}")
 
-    def plot_2d(self, config: Config, mesh: Mesh, solver_data: SolverData):
-
-        x_vert, y_vert, scalar_vert, triangles, outlines = self.create_render_mesh(mesh.get_nE())
-        nN = mesh.get_nN()
-        #====================================================================
-        # Calculate position of vertices, displacements, etc.
-        #====================================================================
-        self.set_vertex_pos_and_color(x_vert, y_vert, scalar_vert, mesh, solver_data, config)
-
-        #====================================================================
-        # Create triangulation of the mesh for plotting and find max/min
-        # values for the color map
-        #====================================================================
-        tris = tri.Triangulation(x_vert, y_vert, triangles)
-        cmap_name = self.cmap_name_default
-        if config.contour_type == "none":
-            vmin = 0
-            vmax = 1
-            cmap_name = self.cmap_name_gray
-        elif config.specify_contour_limits:
-            vmin = config.contour_min
-            vmax = config.contour_max
-        else:
-            vmin = np.min(scalar_vert)
-            vmax = np.max(scalar_vert)
-            config.contour_min = vmin
-            config.contour_max = vmax
-            #Show the limits in the text boxes. The events must be switched off while doing this, since
-            #changing the text otherwise triggers update(), which would draw the whole plot again.
-            for text_box, value in [(self.box_contour_min, vmin), (self.box_contour_max, vmax)]:
-                text_box.eventson = False
-                text_box.set_val(f"{value:.3e}")
-                text_box.eventson = True
-
-        cmap = plt.get_cmap(cmap_name).with_extremes(over='lightgrey', under='lightgrey')
-
-        #====================================================================
-        # Plot the mesh body with the specified contour type
-        #====================================================================
-        tpc = self.ax.tripcolor(tris, scalar_vert, shading='gouraud', cmap=cmap, vmin=vmin, vmax=vmax)
-
-        fig = self.ax.get_figure()
-
-        #====================================================================
-        # Colorbar
-        #====================================================================
-        if self.cbar is None:
-            self.cbar = fig.colorbar(tpc, ax=self.ax)
-        self.cbar.ax.set_visible(True)
-        self.cbar.update_normal(tpc)
-        vmin, vmax = tpc.get_clim()
-
-        # Force uniformly spaced colorbar ticks
-        NUM_TICKS = 10
-        ticks = np.linspace(vmin, vmax, NUM_TICKS)
-        self.cbar.set_ticks(ticks)
-
-        # Set colorbar tick label font size
-        self.cbar.ax.tick_params(labelsize=self.TICK_FONTSIZE)
-
-        #====================================================================
-        # Set axis labels and colorbar label
-        #====================================================================
-        if config.contour_type == "none":
-            self.cbar.ax.set_visible(False)
-        elif config.problem_type == ProblemType.PLANE_STRESS:
-            if config.contour_type == "disp":
-                if config.disp_component == "mag":
-                    self.cbar.set_label(r"$u^{\mathrm{mag}} = \sqrt{u^2 + v^2}$", fontsize=self.LABEL_FONTSIZE)
-                elif config.disp_component == "u":
-                    self.cbar.set_label(r"$u$", fontsize=self.LABEL_FONTSIZE)
-                elif config.disp_component == "v":
-                    self.cbar.set_label(r"$v$", fontsize=self.LABEL_FONTSIZE)
-                else:
-                    print(f"Error: Unknown displacement component for plotting: {config.disp_component}")
-            elif config.contour_type == "stress":
-                if config.stress_component == "mises":
-                    self.cbar.set_label(r"$\sigma^{\mathrm{VM}}$", fontsize=self.LABEL_FONTSIZE)
-                elif config.stress_component == "xx":
-                    self.cbar.set_label(r"$\sigma_{\mathrm{xx}}$", fontsize=self.LABEL_FONTSIZE)
-                elif config.stress_component == "yy":
-                    self.cbar.set_label(r"$\sigma_{\mathrm{yy}}$", fontsize=self.LABEL_FONTSIZE)
-                elif config.stress_component == "xy":
-                    self.cbar.set_label(r"$\sigma_{\mathrm{xy}}$", fontsize=self.LABEL_FONTSIZE)
-                else:
-                    print(f"Error: Unknown stress component for plotting: {config.stress_component}")
-            else:
-                print(f"Error: Unknown contour type for plotting: {config.contour_type}")
-        else:
-            assert config.problem_type == ProblemType.PLATE
-            if config.contour_type == "disp":
-                if config.disp_component == "w":
-                    self.cbar.set_label(r"$w$", fontsize=self.LABEL_FONTSIZE)
-                elif config.disp_component == "thetax":
-                    self.cbar.set_label(r"$\theta_x$", fontsize=self.LABEL_FONTSIZE)
-                elif config.disp_component == "thetay":
-                    self.cbar.set_label(r"$\theta_y$", fontsize=self.LABEL_FONTSIZE)
-                else:
-                    print(f"Error: Unknown displacement component for plotting: {config.disp_component}")
-            elif config.contour_type == "stress":
-                print("Stress contour plotting for plate problems is not implemented yet.")
-                assert False
-            else:
-                print(f"Error: Unknown contour type for plotting: {config.contour_type}")
-
-        #====================================================================
-        # Plot lines marking edges of elements
-        #====================================================================
-        self.plot_element_outlines(config, x_vert, y_vert, outlines)
-
-        #====================================================================
-        # Plot nodes
-        #====================================================================
-        SCALE_NODES = 1
-        if config.problem_type == ProblemType.PLANE_STRESS:
-            u, v = unpack_solution(config, solver_data.r)
-            x_nodes = mesh.nodes[:, 0] + config.disp_scaling * u
-            y_nodes = mesh.nodes[:, 1] + config.disp_scaling * v
-        else:
-            assert config.problem_type == ProblemType.PLATE
-            x_nodes = mesh.nodes[:, 0]
-            y_nodes = mesh.nodes[:, 1]
-
-        SCALE_DOMAIN = 20
-        domain_scale = SCALE_DOMAIN / np.sqrt(nN)
+    def plot_nodes(self, x_nodes, y_nodes, domain_scale):
+        config = self.config
         if config.show_mesh:
-            self.ax.scatter(x_nodes,
-                            y_nodes,
-                            color="black",
-                            s=config.node_scale * domain_scale * SCALE_NODES,
-                            zorder=10)
-        SCALE_NODELABELS = 3
+            self.ax.scatter(x_nodes, y_nodes, color="black", s=config.node_scale * domain_scale, zorder=10)
         if config.show_node_labels:
-            for i in range(nN):
-                self.ax.text(x_nodes[i],
-                             y_nodes[i],
-                             str(i),
-                             fontsize=config.node_scale * domain_scale * SCALE_NODELABELS,
-                             color="black",
-                             ha="left",
-                             va="bottom",
-                             zorder=20)
+            for i in range(len(x_nodes)):
+                self.ax.text(x_nodes[i], y_nodes[i], str(i), fontsize=config.node_scale * domain_scale * 3,
+                             color="black", ha="left", va="bottom", zorder=20)
 
-        #====================================================================
-        # Plot arrow fields
-        #====================================================================
-        if config.arrow_type != "none":
-            if config.problem_type == ProblemType.PLANE_STRESS:
-                show_max_norm = False
-                if config.arrow_type == "disp":
-                    self.plot_arrows(x_nodes, y_nodes, u, v, "disp", "blue", domain_scale, config.arrow_scale)
-                elif config.arrow_type == "external forces":
-                    Rx_ext, Ry_ext = unpack_solution(config, solver_data.R_ext)
-                    self.plot_arrows(x_nodes, y_nodes, Rx_ext, Ry_ext, "external forces", "red", domain_scale,
-                                     config.arrow_scale, show_max_norm)
-                elif config.arrow_type == "reaction forces":
-                    R_rea = solver_data.R_int - solver_data.R_ext
-                    Rx_rea, Ry_rea = unpack_solution(config, R_rea)
-                    self.plot_arrows(x_nodes, y_nodes, Rx_rea, Ry_rea, "reaction forces", "green", domain_scale,
-                                     config.arrow_scale, show_max_norm)
-                else:
-                    raise ValueError(f"Unknown arrow type for plotting: {config.arrow_type}")
-            else:
-                assert False, "Arrows are not implemented for plate problems"
-
-        #====================================================================
-        # Plot boundary conditions
-        #====================================================================
-        self.plot_bcs(config, mesh, x_nodes, y_nodes, domain_scale)
-
-        if config.problem_type == ProblemType.PLANE_STRESS:
-            fig.suptitle(f"Plane stress problem: {config.element_type.name} element")
+    def plot_arrow_field(self, x_nodes, y_nodes, domain_scale):
+        config = self.config
+        if config.arrow_type == "none":
+            return
+        assert config.problem_type == ProblemType.PLANE_STRESS, "Arrows are not implemented for plate problems"
+        if config.arrow_type == "disp":
+            u, v = unpack_solution(config, self.solver_data.r)
+            self.plot_arrows(x_nodes, y_nodes, u, v, "disp", "blue", domain_scale, config.arrow_scale)
+        elif config.arrow_type == "external forces":
+            Rx_ext, Ry_ext = unpack_solution(config, self.solver_data.R_ext)
+            self.plot_arrows(x_nodes, y_nodes, Rx_ext, Ry_ext, "external forces", "red", domain_scale,
+                             config.arrow_scale)
+        elif config.arrow_type == "reaction forces":
+            Rx_rea, Ry_rea = unpack_solution(config, self.solver_data.R_int - self.solver_data.R_ext)
+            self.plot_arrows(x_nodes, y_nodes, Rx_rea, Ry_rea, "reaction forces", "green", domain_scale,
+                             config.arrow_scale)
         else:
-            assert config.problem_type == ProblemType.PLATE
-            fig.suptitle(f"Mindlin plate problem: {config.element_type.name} element")
-        self.ax.set_aspect('equal')
-        self.ax.axis('equal')
-        self.ax.set_xlabel(r"$x$", fontsize=self.LABEL_FONTSIZE)
-        self.ax.set_ylabel(r"$y$", fontsize=self.LABEL_FONTSIZE)
+            raise ValueError(f"Unknown arrow type for plotting: {config.arrow_type}")
 
-        # Set axis tick label font size
-        self.ax.tick_params(axis='both', which='major', labelsize=self.TICK_FONTSIZE)
-
-    def plot_arrows(self, x, y, field_x, field_y, label, color, domain_scale, user_scale, show_max_norm=False):
+    def plot_arrows(self, x, y, field_x, field_y, label, color, domain_scale, user_scale):
         #only plot arrows with a non negligible magnitude
         values_keep = np.where(np.sqrt(field_x**2 + field_y**2) > SMALL_VAL)[0]
         if len(values_keep) == 0:  #Nothing to draw, e.g. no external forces, or NaN from a singular system
@@ -402,22 +449,16 @@ class Plot:
         ARROW_LENGTH_SCALE = 0.05
         ARROW_WIDTH_SCALE = 0.002
         max_vector_norm = np.max(np.sqrt(field_x_keep**2 + field_y_keep**2))
-        #handle normalization in a non singular way
-        field_x_normalized = field_x_keep / (max_vector_norm + 1e-10)  #ensure safe division
-        field_y_normalized = field_y_keep / (max_vector_norm + 1e-10)  #ensure safe division
-
         self.ax.quiver(
             x_keep,
             y_keep,
-            ARROW_LENGTH_SCALE * user_scale * field_x_normalized,
-            ARROW_LENGTH_SCALE * user_scale * field_y_normalized,
+            ARROW_LENGTH_SCALE * user_scale * field_x_keep / max_vector_norm,
+            ARROW_LENGTH_SCALE * user_scale * field_y_keep / max_vector_norm,
             color=color,
             scale=1,  #this scale thing is weird, increasing it makes arrows smaller
             width=ARROW_WIDTH_SCALE * domain_scale)
 
         # Create a proxy handle for the legend
-        if show_max_norm:
-            label += f" (max norm: {max_vector_norm:.2e})"
         arrow_proxy = mlines.Line2D([], [],
                                     color=color,
                                     marker=r'$\rightarrow$',
@@ -425,169 +466,6 @@ class Plot:
                                     markersize=10,
                                     label=label)
         self.ax.legend(handles=[arrow_proxy])
-
-    def IX_viz_E(self, e, i, j):
-        num_quads_1D = self.NUM_QUADS_PLOT_1D_PER_ELEMENT
-        curr_size_tris = e * (num_quads_1D + 1)**2
-        return curr_size_tris + i * (num_quads_1D + 1) + j
-
-    def xi_eta_viz(self, i, j):
-        num_quads_1D = self.NUM_QUADS_PLOT_1D_PER_ELEMENT
-        xi = -1 + 2 * i / num_quads_1D
-        eta = -1 + 2 * j / num_quads_1D
-        assert xi >= -1 and xi <= 1
-        assert eta >= -1 and eta <= 1
-        return xi, eta
-
-    def create_render_mesh(self, nE):
-        """Triangulates the mesh for plotting. Each quad element is subdivided into num_quads_1D x num_quads_1D smaller quads
-        where each smaller quad is divided into two triangles. The positions and colors will be interpolated by the element shape functions"""
-        num_quads_1D = self.NUM_QUADS_PLOT_1D_PER_ELEMENT
-
-        triangles_glob = []
-        outline_glob = []
-        x_vert = np.zeros(nE * (num_quads_1D + 1)**2)
-        y_vert = np.zeros_like(x_vert)
-        color_vert = np.zeros_like(x_vert)
-
-        for e in range(nE):
-            #====================================================================
-            # The quads making up the element body
-            #====================================================================
-            for i in range(num_quads_1D):
-                for j in range(num_quads_1D):
-                    v0 = self.IX_viz_E(e, i, j)
-                    v1 = self.IX_viz_E(e, i + 1, j)
-                    v2 = self.IX_viz_E(e, i + 1, j + 1)
-                    v3 = self.IX_viz_E(e, i, j + 1)
-                    triangles_glob.append([v0, v1, v2])
-                    triangles_glob.append([v0, v2, v3])
-
-            #====================================================================
-            # The four outlines of the element
-            #====================================================================
-
-            #Bottom line:
-            for i in range(num_quads_1D):
-                v0 = self.IX_viz_E(e, i, 0)
-                v1 = self.IX_viz_E(e, i + 1, 0)
-                outline_glob.append([v0, v1])
-            #Right line:
-            for j in range(num_quads_1D):
-                v0 = self.IX_viz_E(e, num_quads_1D, j)
-                v1 = self.IX_viz_E(e, num_quads_1D, j + 1)
-                outline_glob.append([v0, v1])
-            #Top line:
-            for i in range(num_quads_1D):
-                v0 = self.IX_viz_E(e, num_quads_1D - i, num_quads_1D)
-                v1 = self.IX_viz_E(e, num_quads_1D - i - 1, num_quads_1D)
-                outline_glob.append([v0, v1])
-            #Left line:
-            for j in range(num_quads_1D):
-                v0 = self.IX_viz_E(e, 0, num_quads_1D - j)
-                v1 = self.IX_viz_E(e, 0, num_quads_1D - j - 1)
-                outline_glob.append([v0, v1])
-
-        return x_vert, y_vert, color_vert, np.array(triangles_glob, dtype=int), np.array(outline_glob, dtype=int)
-
-    def set_vertex_pos_and_color(self, x_vert, y_vert, scalar_vert, mesh: Mesh, solver_data: SolverData,
-                                 config: Config):
-        num_quads_1D = self.NUM_QUADS_PLOT_1D_PER_ELEMENT
-        nE = mesh.get_nE()
-        nodes = mesh.nodes
-        elements = mesh.elements
-        element_type = config.element_type
-        if config.problem_type == ProblemType.PLANE_STRESS:
-            u, v = unpack_solution(config, solver_data.r)
-
-            for e in range(nE):
-                for i in range(num_quads_1D + 1):
-                    for j in range(num_quads_1D + 1):
-                        xi, eta = self.xi_eta_viz(i, j)
-                        N = shape_functions.calc_N(xi, eta, element_type)
-                        x_e = nodes[elements[e, :], 0]
-                        y_e = nodes[elements[e, :], 1]
-                        u_e = u[elements[e, :]]
-                        v_e = v[elements[e, :]]
-                        x_viz = np.dot(N, x_e + u_e * config.disp_scaling)
-                        y_viz = np.dot(N, y_e + v_e * config.disp_scaling)
-                        scalar = 0.0
-                        if config.contour_type == "disp":
-                            if config.disp_component == "mag":
-                                scalar = np.sqrt((np.dot(N, u_e))**2 + (np.dot(N, v_e))**2)
-                            elif config.disp_component == "u":
-                                scalar = np.dot(N, u_e)
-                            else:
-                                assert config.disp_component == "v"
-                                scalar = np.dot(N, v_e)
-
-                        #Set the vertex values
-                        I_vert = self.IX_viz_E(e, i, j)
-                        x_vert[I_vert] = x_viz
-                        y_vert[I_vert] = y_viz
-                        scalar_vert[I_vert] = scalar
-
-            if config.contour_type == "stress":
-                xi_eta = [self.xi_eta_viz(i, j) for i in range(num_quads_1D + 1) for j in range(num_quads_1D + 1)]
-                for e in range(nE):
-                    sigma_E = stress_recovery.recover_stress_plane_stress_consistent(e, config, mesh, nodes, u, v, xi_eta)
-                    for i in range(num_quads_1D + 1):
-                        for j in range(num_quads_1D + 1):
-                            I_loc = self.IX_viz_E(0, i, j)  #relative index
-                            sigma = sigma_E[I_loc, :]
-                            sxx = sigma[0]
-                            syy = sigma[1]
-                            sxy = sigma[2]
-                            if config.stress_component == "mises":
-                                val = np.sqrt(sxx**2 - sxx * syy + syy**2 + 3 * sxy**2)
-                            elif config.stress_component == "xx":
-                                val = sxx
-                            elif config.stress_component == "yy":
-                                val = syy
-                            else:
-                                assert config.stress_component == "xy"
-                                val = sxy
-                            I_vert = self.IX_viz_E(e, i, j)
-                            scalar_vert[I_vert] = val
-
-        else:
-            assert config.problem_type == ProblemType.PLATE
-            w, thetax, thetay = unpack_solution(config, solver_data.r)
-            for e in range(nE):
-                for i in range(num_quads_1D + 1):
-                    for j in range(num_quads_1D + 1):
-                        xi, eta = self.xi_eta_viz(i, j)
-                        N = shape_functions.calc_N(xi, eta, element_type)
-                        x_e = nodes[elements[e, :], 0]
-                        y_e = nodes[elements[e, :], 1]
-                        w_e = w[elements[e, :]]
-                        thetax_e = thetax[elements[e, :]]
-                        thetay_e = thetay[elements[e, :]]
-                        x_viz = np.dot(N, x_e)
-                        y_viz = np.dot(N, y_e)
-                        scalar = 0.0
-                        if config.contour_type == "disp":
-                            if config.disp_component == "w":
-                                scalar = np.dot(N, w_e)
-                            elif config.disp_component == "thetax":
-                                scalar = np.dot(N, thetax_e)
-                            else:
-                                assert config.disp_component == "thetay"
-                                scalar = np.dot(N, thetay_e)
-
-                        #Set the vertex values
-                        I_vert = self.IX_viz_E(e, i, j)
-                        x_vert[I_vert] = x_viz
-                        y_vert[I_vert] = y_viz
-                        scalar_vert[I_vert] = scalar
-            assert config.contour_type != "stress", "Stress contours are not implemented for plate problems yet"
-
-    def plot_element_outlines(self, config: Config, x_vert, y_vert, outlines):
-        if not config.show_mesh:
-            return
-        segments = [[[x_vert[a], y_vert[a]], [x_vert[b], y_vert[b]]] for a, b in outlines]
-        line_collection = LineCollection(segments, colors='black', linewidths=1.0)
-        self.ax.add_collection(line_collection)
 
     def plot_bcs(self, config: Config, mesh: Mesh, x_nodes, y_nodes, domain_scale):
         #====================================================================
@@ -617,7 +495,7 @@ class Plot:
             return segs
 
         if config.show_bcs:
-            L_domain = get_L_domain(mesh.nodes)
+            L_domain = get_mesh_size(mesh.nodes)
             s = min(L_domain / 40, L_domain * 0.01 * domain_scale)
             if config.problem_type == ProblemType.PLANE_STRESS:
                 marker_size = 1.3
@@ -646,14 +524,3 @@ class Plot:
             self.ax.add_collection(bc_lines)
             #Plot a dot for each node with constrained w
             self.ax.plot(x_w_constrained, y_w_constrained, "o", color='magenta', markersize=marker_size)
-
-    def set_num_quads_1D_per_element_for_reasonable_plotting(self, nE):
-        MAX_1D = 40
-        MIN_1D = 5
-        # TARGET = 2000
-        TARGET = 4000
-        num_quads_1D = int(np.sqrt(TARGET / nE))
-        num_quads_1D = int(np.clip(num_quads_1D, MIN_1D, MAX_1D))
-        assert MIN_1D <= num_quads_1D <= MAX_1D
-        self.NUM_QUADS_PLOT_1D_PER_ELEMENT = num_quads_1D
-        print(f"Using {num_quads_1D}x{num_quads_1D} quads per element for contour plotting.")

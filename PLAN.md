@@ -16,15 +16,16 @@ Progress tracker for the handover clean-up. Can be deleted when we're done.
 - [x] Mesh morphing, one function per shape: `morph_mesh_to_quarter_circle`, `morph_mesh_to_quarter_annulus`, `morph_mesh_to_quadrilateral`
 
 ## Step 3: Stress recovery
-- [ ] Consistent and L2 (consistent mass) recovery as post-processing functions, not stored in solver_data
-- [ ] Plane stress: σxx, σyy, σxy, von Mises
-- [ ] Plate: Mxx, Myy, Mxy, Qx, Qy
-- [ ] GUI: show the right quantities for each problem type, and a consistent/L2 switch
+- [x] Consistent and L2 (consistent mass) recovery as post-processing functions, not stored in solver_data
+- [x] Plane stress: σxx, σyy, σxy, von Mises
+- [x] Plate: Mxx, Myy, Mxy, Vx, Vy
+- [x] GUI: show the right quantities for each problem type, and a consistent/L2 switch
 
 ## Step 4: GUI
-- [ ] `plot_field` function used by the GUI and usable from scripts
-- [ ] Cache shape functions at the plot points
-- [ ] Font and window sizes that work on different screens
+- [x] `plot_field` function used by the GUI and usable from scripts
+- [x] Shape functions at the plot points calculated once per draw (first draw of 1800 Q4 elements: 6 s → 0.3 s)
+- [x] Font sizes scale with the window height, and the window opens maximized
+- [ ] Check the GUI by hand on a laptop and a large screen
 
 ## Step 5: Distribution
 - [ ] Default: Python with numpy, scipy and matplotlib, clone the folder, scripts in the project root

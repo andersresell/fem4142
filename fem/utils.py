@@ -51,9 +51,8 @@ class Config:
     disp_scaling: float = 1  #Scaling factor for displacements
     show_node_labels: bool = False
     show_bcs: bool = False
-    contour_type: str = "disp"  #"none", "disp" or "stress"
-    disp_component: str = "mag"  #Displacement component to show
-    stress_component: str = "mises"  #Stress component to show
+    contour: str = "u_mag"  #The field to show, e.g. "u_mag" or "sigma_xx" (see plot_tools.get_field_names)
+    stress_recovery: str = "consistent"  #"consistent" or "L2" (see stress_recovery.py)
     arrow_type: str = "none"  #"none", "disp", "external forces" or "reaction forces"
     node_scale: float = 1  #Scales nodes and node labels
     arrow_scale: float = 1
@@ -68,6 +67,6 @@ def create_config(E, nu, h, element_type, problem_type) -> Config:
 
     # Set problem-specific defaults
     if config.problem_type == ProblemType.PLATE:
-        config.disp_component = "w"
+        config.contour = "w"
 
     return config
