@@ -10,7 +10,7 @@
 - Simple GUI (see images below)
 
 ![](images/fem-stress.png)  
-*The current problem has a linearly varying pressure load $p(x) = p_0 (1 - x/L_x)$ applied to the top edge.  
+*The current problem has a linearly varying pressure load* $p(x) = p_0 (1 - x/L_x)$ *applied to the top edge.  
 The arrows shown are the external nodal forces arising from consistent load integration of this pressure.  
 The magenta symbols on the left edge mark the boundary conditions.  
 The contours show the von Mises stress (no nodal averaging), computed for each element.*
