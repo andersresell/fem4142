@@ -3,6 +3,7 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 import matplotlib.tri as tri
 from matplotlib.collections import LineCollection
+from matplotlib.path import Path
 from matplotlib.text import Text
 from matplotlib.transforms import Bbox
 from matplotlib.widgets import Slider, RadioButtons, CheckButtons, TextBox, Button
@@ -13,6 +14,7 @@ import fem.stress_recovery as stress_recovery
 from fem.mesh import Mesh
 from fem.utils import Config
 from fem.solver_data import *
+import fem.shape_functions as shape_functions
 
 #The fields that can be shown as contours, with the labels that are used in the GUI and on the colorbar
 FIELD_LABELS = {
@@ -39,6 +41,16 @@ DOF_FIELDS = {"u": 0, "v": 1, "w": 0, "theta_x": 1, "theta_y": 2}
 
 COLORMAP = plt.get_cmap("turbo").with_extremes(over="lightgrey", under="lightgrey")
 GRAY_COLORMAP = mcolors.ListedColormap(["grey"])  #Used when no field is shown
+
+#Symbols for the boundary conditions, with the node at (0, 0). Dof.V: A triangle with its tip at the node and a line
+#underneath. Dof.U: The same, rotated 90 degrees. Dof.THETAX and Dof.THETAY: A vertical and a horizontal line.
+M, L = Path.MOVETO, Path.LINETO  #Move the pen, or draw a line
+BC_SYMBOLS = {
+    Dof.V: Path([(0, 0), (-0.6, -0.8), (0.6, -0.8), (0, 0), (-0.6, -1), (0.6, -1)], [M, L, L, L, M, L]),
+    Dof.U: Path([(0, 0), (-0.8, 0.6), (-0.8, -0.6), (0, 0), (-1, 0.6), (-1, -0.6)], [M, L, L, L, M, L]),
+    Dof.THETAX: Path([(0, -1), (0, 1)], [M, L]),
+    Dof.THETAY: Path([(-1, 0), (1, 0)], [M, L]),
+}
 
 
 def get_field_names(problem_type):
@@ -115,7 +127,7 @@ def plot_field(ax, config: Config, mesh: Mesh, solver_data: SolverData, field, n
     """Draws a field (e.g. "u_mag" or "sigma_xx", see get_field_names) as a contour plot on the mesh, in the
     matplotlib axes ax. For plane stress, the mesh is deformed by the displacements times config.disp_scaling.
     Stresses are calculated with config.stress_recovery ("consistent" or "L2"). The element edges are drawn if
-    config.show_mesh is True. Returns the contour plot, which can be used to add a colorbar. Example:
+    config.show_element_edges is True. Returns the contour plot, which can be used to add a colorbar. Example:
 
         fig, ax = plt.subplots()
         contours = plot_field(ax, config, mesh, solver_data, "sigma_xx")
@@ -161,7 +173,7 @@ def plot_field(ax, config: Config, mesh: Mesh, solver_data: SolverData, field, n
     else:
         contours = ax.tripcolor(triangulation, values.ravel(), shading="gouraud", cmap=COLORMAP)
 
-    if config.show_mesh:
+    if config.show_element_edges:
         element_outlines = [np.column_stack([x[e, outline], y[e, outline]]) for e in range(nE)]
         ax.add_collection(LineCollection(element_outlines, colors="black", linewidths=1.0))
     ax.set_aspect("equal")
@@ -173,8 +185,17 @@ def plot_field(ax, config: Config, mesh: Mesh, solver_data: SolverData, field, n
 #====================================================================
 
 
-def get_mesh_size(nodes):
-    return max(np.ptp(nodes[:, 0]), np.ptp(nodes[:, 1]))
+def get_node_spacing(mesh: Mesh, element_type):
+    """A typical distance between neighbouring nodes, used to choose the size of the nodes and labels"""
+    corners = mesh.nodes[mesh.elements[:, :4]]  #The four corners of each element
+    edge_a = np.linalg.norm(corners[:, 1] - corners[:, 0], axis=1)
+    edge_b = np.linalg.norm(corners[:, 3] - corners[:, 0], axis=1)
+    shortest_edge = np.median(np.minimum(edge_a, edge_b))
+    return shortest_edge / (ELEMENT_TRAITS[element_type].nNl_1D - 1)
+
+
+def format_contour_limit(value):
+    return f"{value:.3e}"
 
 
 def maximize_window(fig):
@@ -212,6 +233,11 @@ class Plot:
         self.solver_data = solver_data
         self.nodal_stress_L2 = None  #Calculated the first time an L2 stress is shown
         self.cbar = None
+        self.node_markers = None  #The nodes, labels and boundary condition symbols are created in update()
+        self.node_labels = []
+        self.element_labels = []
+        self.bc_markers = []
+        self.node_spacing = get_node_spacing(mesh, config.element_type)
 
         self.field_names = get_field_names(config.problem_type)
         if config.contour not in self.field_names:
@@ -260,17 +286,24 @@ class Plot:
 
         self.check_buttons = CheckButtons(
             get_widget_axes(0.03, 0.2, 0.08),
-            ["show node labels", "specify contour limits", "show mesh", "show boundary conditions"],
-            [config.show_node_labels, config.specify_contour_limits, config.show_mesh, config.show_bcs])
-        self.check_buttons.ax.set_title("Options:")
+            ["show labels", "show nodes", "show element edges", "show boundary conditions"],
+            [config.show_labels, config.show_nodes, config.show_element_edges, config.show_bcs])
+        self.check_buttons.ax.set_title("Show:")
 
-        self.box_contour_max = TextBox(get_widget_axes(0.13, 0.08, 0.03), "contour max ", initial=config.contour_max)
-        self.box_contour_min = TextBox(get_widget_axes(0.13, 0.08, 0.03), "contour min ", initial=config.contour_min)
-        self.box_disp_scale = TextBox(get_widget_axes(0.13, 0.08, 0.03), "disp scale ", initial=config.disp_scaling)
+        self.box_disp_scale = None
+        if config.problem_type == ProblemType.PLANE_STRESS:  #Plates are drawn undeformed
+            self.box_disp_scale = TextBox(get_widget_axes(0.13, 0.08, 0.03), "disp scale ",
+                                          initial=config.disp_scaling)
+
+        #The contour limit boxes are only shown when "fixed contour limits" is ticked (see update)
+        self.check_fixed_limits = CheckButtons(get_widget_axes(0.03, 0.2, 0.03), ["fixed contour limits"],
+                                               [config.fixed_contour_limits])
+        self.box_contour_max = TextBox(get_widget_axes(0.13, 0.08, 0.03), "max ", initial=config.contour_max)
+        self.box_contour_min = TextBox(get_widget_axes(0.13, 0.08, 0.03), "min ", initial=config.contour_min)
 
         #The widgets at the bottom
-        self.slider_node_scale = Slider(plt.axes([0.4, 0.13, 0.45, 0.03]), "node size", 0, 10,
-                                        valinit=config.node_scale)
+        self.slider_symbol_scale = Slider(plt.axes([0.4, 0.13, 0.45, 0.03]), "symbol size", 0, 5,
+                                          valinit=config.symbol_scale)
         self.slider_arrow_scale = Slider(plt.axes([0.4, 0.08, 0.45, 0.03]), "arrow size", 0, 10,
                                          valinit=config.arrow_scale)
         self.save_button = Button(plt.axes([0.4, 0.02, 0.15, 0.04]), "Save Screen", color="lightblue",
@@ -280,18 +313,21 @@ class Plot:
         for radio in [self.radio_contour, self.radio_recovery, self.radio_arrows]:
             radio.on_clicked(self.update)
         self.check_buttons.on_clicked(self.update)
-        for box in [self.box_contour_max, self.box_contour_min, self.box_disp_scale]:
-            box.on_submit(self.update)
-        self.slider_node_scale.on_changed(self.update)
+        self.check_fixed_limits.on_clicked(self.update)
+        self.box_contour_max.on_submit(self.update)
+        self.box_contour_min.on_submit(self.update)
+        if self.box_disp_scale is not None:
+            self.box_disp_scale.on_submit(self.update)
+        self.slider_symbol_scale.on_changed(self.update)
         self.slider_arrow_scale.on_changed(self.update)
 
         #All the text in the widgets, so that the font size can be changed when the window changes size
-        widget_axes = [
-            self.radio_contour.ax, self.radio_recovery.ax, self.radio_arrows.ax, self.check_buttons.ax,
-            self.box_contour_max.ax, self.box_contour_min.ax, self.box_disp_scale.ax, self.slider_node_scale.ax,
-            self.slider_arrow_scale.ax, self.save_button.ax
+        widgets = [
+            self.radio_contour, self.radio_recovery, self.radio_arrows, self.check_buttons, self.box_disp_scale,
+            self.check_fixed_limits, self.box_contour_max, self.box_contour_min, self.slider_symbol_scale,
+            self.slider_arrow_scale, self.save_button
         ]
-        self.widget_texts = [text for widget_ax in widget_axes for text in widget_ax.findobj(Text)]
+        self.widget_texts = [text for widget in widgets if widget is not None for text in widget.ax.findobj(Text)]
 
     def read_widgets(self):
         """Copies the choices in the GUI to config"""
@@ -299,17 +335,26 @@ class Plot:
         config.contour = self.field_names[self.contour_labels.index(self.radio_contour.value_selected)]
         config.stress_recovery = self.radio_recovery.value_selected
         config.arrow_type = self.radio_arrows.value_selected
-        config.show_node_labels, config.specify_contour_limits, config.show_mesh, config.show_bcs = \
+        config.show_labels, config.show_nodes, config.show_element_edges, config.show_bcs = \
             self.check_buttons.get_status()
-        config.node_scale = self.slider_node_scale.val
+        config.fixed_contour_limits = self.check_fixed_limits.get_status()[0]
+        config.symbol_scale = self.slider_symbol_scale.val
         config.arrow_scale = self.slider_arrow_scale.val
-        for box, name, default in [(self.box_disp_scale, "disp_scaling", 1.0), (self.box_contour_min, "contour_min", 0.0),
-                                   (self.box_contour_max, "contour_max", 1.0)]:
+        if self.box_disp_scale is not None:
             try:
-                setattr(config, name, float(box.text))
+                config.disp_scaling = float(self.box_disp_scale.text)
             except ValueError:
-                print(f"Invalid input for {name}: '{box.text}'. Using {default} instead.")
-                setattr(config, name, default)
+                print(f"Invalid input for the displacement scaling: '{self.box_disp_scale.text}'. Using 1 instead.")
+                config.disp_scaling = 1.0
+
+        #The contour limits are shown rounded in the text boxes. They are only read if the user has changed the
+        #text, so that ticking "fixed" doesn't replace the exact limits by the rounded ones.
+        for box, name in [(self.box_contour_min, "contour_min"), (self.box_contour_max, "contour_max")]:
+            if box.text != format_contour_limit(getattr(config, name)):
+                try:
+                    setattr(config, name, float(box.text))
+                except ValueError:
+                    print(f"Invalid input for the contour limit: '{box.text}'. Keeping the previous limit.")
 
     def update(self, event=None):
         """Reads the choices in the GUI and draws everything again"""
@@ -330,6 +375,10 @@ class Plot:
         for text in list(self.radio_recovery.labels) + [self.radio_recovery.ax.title]:
             text.set_color(recovery_color)
 
+        #The boxes for the contour limits are only shown when the limits are fixed (otherwise, see the colorbar)
+        self.box_contour_max.ax.set_visible(config.fixed_contour_limits)
+        self.box_contour_min.ax.set_visible(config.fixed_contour_limits)
+
         #====================================================================
         # Nodes, arrows and boundary conditions
         #====================================================================
@@ -340,14 +389,14 @@ class Plot:
         else:
             x_nodes = self.mesh.nodes[:, 0]
             y_nodes = self.mesh.nodes[:, 1]
-        domain_scale = 20 / np.sqrt(self.mesh.get_nN())  #Smaller nodes and arrows when there are many nodes
-        self.plot_nodes(x_nodes, y_nodes, domain_scale)
+        domain_scale = 20 / np.sqrt(self.mesh.get_nN())  #Smaller arrows when there are many nodes
+        self.plot_nodes_and_labels(x_nodes, y_nodes)
         self.plot_arrow_field(x_nodes, y_nodes, domain_scale)
-        self.plot_bcs(config, self.mesh, x_nodes, y_nodes, domain_scale)
+        self.plot_bcs(x_nodes, y_nodes)
 
         self.ax.set_xlabel(r"$x$")
         self.ax.set_ylabel(r"$y$")
-        self.apply_font_sizes()
+        self.apply_sizes()
         self.fig.canvas.draw_idle()
 
     def update_contour_limits_and_colorbar(self, contours):
@@ -357,15 +406,15 @@ class Plot:
                 self.cbar.ax.set_visible(False)
             return
 
-        if config.specify_contour_limits:
+        if config.fixed_contour_limits:
             contours.set_clim(config.contour_min, config.contour_max)
         else:
-            #Show the limits in the text boxes. The events must be switched off while doing this, since
-            #changing the text otherwise triggers update(), which would draw the whole plot again.
-            vmin, vmax = contours.get_clim()
-            for text_box, value in [(self.box_contour_min, vmin), (self.box_contour_max, vmax)]:
+            #Remember the limits, and show them in the text boxes. The events must be switched off while doing this,
+            #since changing the text otherwise triggers update(), which would draw the whole plot again.
+            config.contour_min, config.contour_max = contours.get_clim()
+            for text_box, value in [(self.box_contour_min, config.contour_min), (self.box_contour_max, config.contour_max)]:
                 text_box.eventson = False
-                text_box.set_val(f"{value:.3e}")
+                text_box.set_val(format_contour_limit(value))
                 text_box.eventson = True
 
         if self.cbar is None:
@@ -376,8 +425,9 @@ class Plot:
         self.cbar.set_ticks(np.linspace(vmin, vmax, 10))  #Uniformly spaced ticks
         self.cbar.set_label(FIELD_LABELS[config.contour])
 
-    def apply_font_sizes(self):
-        """Sets all font sizes in proportion to the height of the window"""
+    def apply_sizes(self):
+        """Sets all font sizes in proportion to the height of the window, and the sizes of the nodes, labels and
+        boundary condition symbols from the symbol size"""
         scale = self.fig.get_size_inches()[1] / self.DESIGN_HEIGHT
         for text in self.widget_texts:
             text.set_fontsize(self.FONT_SIZE * scale)
@@ -393,8 +443,22 @@ class Plot:
             for text in legend.get_texts():
                 text.set_fontsize(self.FONT_SIZE * scale)
 
+        #Scatter plots take the marker size as an area (in points^2)
+        size = self.get_symbol_size()
+        if self.node_markers is not None:
+            self.node_markers.set_sizes([(0.5 * size)**2])
+        for label in self.node_labels:
+            label.set_fontsize(size)
+            label.xyann = (0.25 * size, 0.25 * size)  #Distance from the node (in points)
+        for label in self.element_labels:
+            label.set_fontsize(size)
+            label.xyann = (0, -0.4 * size)  #Below the center (in points)
+        for markers, relative_size in self.bc_markers:
+            markers.set_sizes([(relative_size * size)**2])
+            markers.set_linewidths(max(0.8, 0.12 * size))
+
     def on_resize(self, event):
-        self.apply_font_sizes()
+        self.apply_sizes()
         self.fig.canvas.draw_idle()
 
     def save_screen(self, event=None):
@@ -413,14 +477,66 @@ class Plot:
         self.fig.savefig(filepath, dpi=600, bbox_inches=extent)
         print(f"Saved the plot to {filepath}")
 
-    def plot_nodes(self, x_nodes, y_nodes, domain_scale):
+    #====================================================================
+    # Nodes, labels and boundary conditions. They are drawn here, and
+    # their sizes are set in apply_sizes(), since the sizes must be
+    # updated when the window changes size.
+    #====================================================================
+
+    def plot_nodes_and_labels(self, x_nodes, y_nodes):
         config = self.config
-        if config.show_mesh:
-            self.ax.scatter(x_nodes, y_nodes, color="black", s=config.node_scale * domain_scale, zorder=10)
-        if config.show_node_labels:
+        self.node_markers = None
+        if config.show_nodes:
+            self.node_markers = self.ax.scatter(x_nodes, y_nodes, color="black", zorder=10)
+
+        self.node_labels = []
+        self.element_labels = []
+        if config.show_labels:
             for i in range(len(x_nodes)):
-                self.ax.text(x_nodes[i], y_nodes[i], str(i), fontsize=config.node_scale * domain_scale * 3,
-                             color="black", ha="left", va="bottom", zorder=20)
+                #The label is placed up and to the right of the node, at a distance set in apply_sizes
+                self.node_labels.append(
+                    self.ax.annotate(str(i), (x_nodes[i], y_nodes[i]), xytext=(0, 0), textcoords="offset points",
+                                     zorder=20))
+            #The element numbers are shown in parentheses just below the center of the elements (xi = eta = 0),
+            #so that they don't cover the center node of Q9 elements
+            N_center = shape_functions.calc_N(0.0, 0.0, config.element_type)
+            for e in range(self.mesh.get_nE()):
+                nodeIDs = self.mesh.elements[e, :]
+                center = (N_center @ x_nodes[nodeIDs], N_center @ y_nodes[nodeIDs])
+                self.element_labels.append(
+                    self.ax.annotate(f"({e})", center, xytext=(0, 0), textcoords="offset points", ha="center",
+                                     va="top", zorder=20))
+
+    def plot_bcs(self, x_nodes, y_nodes):
+        """Draws a symbol at each node with a boundary condition"""
+        self.bc_markers = []  #Pairs of (markers, size relative to the symbol size), used in apply_sizes
+        if not self.config.show_bcs:
+            return
+        for bc in self.config.bcs:
+            nodeIDs = self.mesh.node_sets[bc.node_set_name]
+            if bc.dof == Dof.W:
+                markers = self.ax.scatter(x_nodes[nodeIDs], y_nodes[nodeIDs], marker="o", color="magenta", zorder=9)
+                self.bc_markers.append((markers, 0.9))
+            else:
+                markers = self.ax.scatter(x_nodes[nodeIDs], y_nodes[nodeIDs], marker=BC_SYMBOLS[bc.dof],
+                                          facecolors="none", edgecolors="magenta", zorder=15)
+                self.bc_markers.append((markers, 2.8 if bc.dof in [Dof.U, Dof.V] else 2.0))
+
+    def get_symbol_size(self):
+        """The size (in points, 1/72 inch) of the nodes, labels and boundary condition symbols. It follows the distance
+        between the nodes on the screen, but is kept between a smallest and a largest size (which follow the window
+        size, like the fonts). The symbol size slider scales it."""
+        window_scale = self.fig.get_size_inches()[1] / self.DESIGN_HEIGHT
+        node_spacing_on_screen = self.node_spacing * self.get_screen_length_of_unit_length()
+        return np.clip(0.35 * node_spacing_on_screen, 3 * window_scale, 12 * window_scale) * self.config.symbol_scale
+
+    def get_screen_length_of_unit_length(self):
+        """The length on the screen (in points, 1/72 inch) of one unit of length in the plot"""
+        self.ax.autoscale_view()
+        self.ax.apply_aspect()
+        x0 = self.ax.transData.transform((0, 0))[0]
+        x1 = self.ax.transData.transform((1, 0))[0]
+        return (x1 - x0) * 72 / self.fig.dpi
 
     def plot_arrow_field(self, x_nodes, y_nodes, domain_scale):
         config = self.config
@@ -472,60 +588,3 @@ class Plot:
                                     label=label)
         self.ax.legend(handles=[arrow_proxy])
 
-    def plot_bcs(self, config: Config, mesh: Mesh, x_nodes, y_nodes, domain_scale):
-        #====================================================================
-        # Plot boundary conditions
-        #====================================================================
-        def get_segments_of_symbol(dof, s, x0, y0):
-            segs = []
-            FACTOR = 0.8
-            if dof == Dof.V:
-                sx = s * FACTOR
-                sy = s
-                #A triangle with a line underneath. Center is at top vertex of triangle
-                segs.append([[-sx, -sy], [sx, -sy], [0, 0], [-sx, -sy]])  #triangle
-                segs.append([[-sx, -1.5 * sy], [sx, -1.5 * sy]])  #line underneath
-            elif dof == Dof.U:
-                sx = s
-                sy = s * FACTOR
-                #Same as V, but rotated -90 degrees,
-                segs.append([[-sx, sy], [-sx, -sy], [0, 0], [-sx, sy]])  #triangle
-                segs.append([[-1.5 * sx, -sy], [-1.5 * sx, sy]])
-            else:
-                assert False
-            for seg in segs:
-                for coords in seg:
-                    coords[0] += x0
-                    coords[1] += y0
-            return segs
-
-        if config.show_bcs:
-            L_domain = get_mesh_size(mesh.nodes)
-            s = min(L_domain / 40, L_domain * 0.01 * domain_scale)
-            if config.problem_type == ProblemType.PLANE_STRESS:
-                marker_size = 1.3
-            else:
-                assert config.problem_type == ProblemType.PLATE
-                marker_size = min(7, 5 * domain_scale)
-            segments = []
-            x_w_constrained = []
-            y_w_constrained = []
-            for bc in config.bcs:
-                nodeIDs_constrained = mesh.node_sets[bc.node_set_name]
-                for I in nodeIDs_constrained:
-                    x0, y0 = x_nodes[I], y_nodes[I]
-                    if bc.dof == Dof.U or bc.dof == Dof.V:
-                        segments.extend(get_segments_of_symbol(bc.dof, s, x0, y0))
-                    elif bc.dof == Dof.THETAX:
-                        segments.append([[x0, y0 - s], [x0, y0 + s]])  #vertical line
-                    elif bc.dof == Dof.THETAY:
-                        segments.append([[x0 - s, y0], [x0 + s, y0]])  #horizontal line
-                    else:
-                        assert config.problem_type == ProblemType.PLATE and bc.dof == Dof.W
-                        x_w_constrained.append(x0)
-                        y_w_constrained.append(y0)
-
-            bc_lines = LineCollection(segments, colors='magenta', linewidths=marker_size)
-            self.ax.add_collection(bc_lines)
-            #Plot a dot for each node with constrained w
-            self.ax.plot(x_w_constrained, y_w_constrained, "o", color='magenta', markersize=marker_size)

@@ -47,16 +47,17 @@ class Config:
     #====================================================================
     # Plot settings
     #====================================================================
-    show_mesh: bool = True
+    show_nodes: bool = True
+    show_element_edges: bool = True
     disp_scaling: float = 1  #Scaling factor for displacements
-    show_node_labels: bool = False
+    show_labels: bool = False  #Node numbers, and element numbers in parentheses
     show_bcs: bool = False
     contour: str = "u_mag"  #The field to show, e.g. "u_mag" or "sigma_xx" (see plot_tools.get_field_names)
     stress_recovery: str = "consistent"  #"consistent" or "L2" (see stress_recovery.py)
     arrow_type: str = "none"  #"none", "disp", "external forces" or "reaction forces"
-    node_scale: float = 1  #Scales nodes and node labels
+    symbol_scale: float = 1  #Scales the nodes, labels and boundary condition symbols
     arrow_scale: float = 1
-    specify_contour_limits: bool = False
+    fixed_contour_limits: bool = False  #If False, the limits follow the smallest and largest values
     contour_min: float = 0
     contour_max: float = 1
 

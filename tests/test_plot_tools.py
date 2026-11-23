@@ -63,7 +63,7 @@ def test_plate_contours_and_boundary_conditions(contour, stress_recovery_method)
     config.contour = contour
     config.stress_recovery = stress_recovery_method
     config.show_bcs = True  #The plate problem has w, thetax and thetay boundary conditions
-    config.show_node_labels = True
+    config.show_labels = True
     plot_tools.Plot(config, mesh, solver_data)
 
 
@@ -72,8 +72,8 @@ def test_plane_stress_arrows_labels_and_boundary_conditions(arrow_type):
     config, mesh, solver_data = solved_plane_stress_problem()
     config.arrow_type = arrow_type
     config.show_bcs = True
-    config.show_node_labels = True
-    config.specify_contour_limits = True
+    config.show_labels = True
+    config.fixed_contour_limits = True
     plot_tools.Plot(config, mesh, solver_data)
 
 
@@ -138,6 +138,79 @@ def test_gui_calculates_the_L2_stresses_only_once(monkeypatch):
     plot = plot_tools.Plot(config, mesh, solver_data)
     plot.radio_contour.set_active(plot.field_names.index("sigma_vm"))  #Clicking another stress redraws the plot
     assert len(calls) == 1
+
+
+def test_contour_limits_do_not_change_when_they_are_fixed():
+    """The limits are shown rounded in the text boxes, but ticking "fixed" must keep the exact limits"""
+    config, mesh, solver_data = solved_plane_stress_problem()
+    config.contour = "sigma_xx"
+    plot = plot_tools.Plot(config, mesh, solver_data)
+    limits_before = (plot.cbar.norm.vmin, plot.cbar.norm.vmax)
+    plot.check_fixed_limits.set_active(0)  #Tick "fixed", which redraws the plot
+    assert config.fixed_contour_limits
+    assert (plot.cbar.norm.vmin, plot.cbar.norm.vmax) == limits_before
+
+
+def test_contour_limit_boxes_are_only_shown_when_the_limits_are_fixed():
+    config, mesh, solver_data = solved_plane_stress_problem()
+    config.contour = "sigma_xx"
+    plot = plot_tools.Plot(config, mesh, solver_data)
+    assert not plot.box_contour_max.ax.get_visible() and not plot.box_contour_min.ax.get_visible()
+    plot.check_fixed_limits.set_active(0)  #Tick "fixed contour limits"
+    assert plot.box_contour_max.ax.get_visible() and plot.box_contour_min.ax.get_visible()
+
+
+def test_disp_scale_is_only_shown_for_plane_stress():
+    config, mesh, solver_data = solved_plate_problem()
+    assert plot_tools.Plot(config, mesh, solver_data).box_disp_scale is None
+    config, mesh, solver_data = solved_plane_stress_problem()
+    assert plot_tools.Plot(config, mesh, solver_data).box_disp_scale is not None
+
+
+def test_nodes_and_element_edges_can_be_hidden_separately():
+    config, mesh, solver_data = solved_plane_stress_problem()
+    config.show_nodes = False
+    plot = plot_tools.Plot(config, mesh, solver_data)
+    assert plot.node_markers is None
+    plot.check_buttons.set_active(1)  #Tick "show nodes"
+    plot.check_buttons.set_active(2)  #Untick "show element edges"
+    assert plot.node_markers is not None
+    assert not config.show_element_edges
+
+
+def test_labels_show_node_and_element_numbers():
+    config, mesh, solver_data = solved_plane_stress_problem()
+    config.show_labels = True
+    plot = plot_tools.Plot(config, mesh, solver_data)
+    assert [label.get_text() for label in plot.node_labels] == [str(i) for i in range(mesh.get_nN())]
+    assert [label.get_text() for label in plot.element_labels] == [f"({e})" for e in range(mesh.get_nE())]
+
+
+def test_node_spacing():
+    config, mesh, solver_data = solved_plane_stress_problem()  #Q9 elements of size 1 x 0.5
+    assert plot_tools.get_node_spacing(mesh, config.element_type) == pytest.approx(0.25)
+
+
+def test_symbols_have_a_largest_size_and_follow_the_symbol_size_slider():
+    """With a single element, the nodes are far apart on the screen, so the symbols would be huge without the limit"""
+    config = create_config(1.0, 0.3, 1.0, ElementType.Q4, ProblemType.PLANE_STRESS)
+    mesh = create_structured_quad_mesh(config, 1.0, 1.0, 1, 1)
+    add_boundary_condition(config, mesh, "west", Dof.U, 0)
+    add_boundary_condition(config, mesh, "south_west", Dof.V, 0)
+    add_load(config, mesh, "east", LoadType.TRACTION, lambda x, y: (1.0, 0.0))
+    solver_data = create_solver_data(config, mesh)
+    solve(config, solver_data, mesh)
+    config.show_labels = True
+    config.show_bcs = True
+    plot = plot_tools.Plot(config, mesh, solver_data)
+    window_scale = plot.fig.get_size_inches()[1] / plot.DESIGN_HEIGHT
+    largest_size = 12 * window_scale
+    assert plot.node_labels[0].get_fontsize() == pytest.approx(largest_size)
+    assert plot.node_markers.get_sizes()[0] == pytest.approx((0.5 * largest_size)**2)
+    assert len(plot.bc_markers) == 2
+
+    plot.slider_symbol_scale.set_val(2.0)  #Moving the slider redraws the plot
+    assert plot.node_labels[0].get_fontsize() == pytest.approx(2 * largest_size)
 
 
 def test_stress_recovery_is_greyed_out_for_displacements():

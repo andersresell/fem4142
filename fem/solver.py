@@ -132,5 +132,6 @@ def solve(config: Config, solver_data: SolverData, mesh: Mesh):
 
     elapsed_time = (time.time() - start_time)
     print(f"Solver (assembly and system solution) completed in {elapsed_time:.2f} seconds")
-    rel_res = np.linalg.norm(solver_data.A @ solver_data.r - solver_data.b) / np.linalg.norm(solver_data.b)
-    print(f"Relative solver residual ||A*r - b||/||b|| = {rel_res:.1e} ")
+    if np.linalg.norm(solver_data.b) > 0:  #b = 0 if there are no loads and no prescribed displacements
+        rel_res = np.linalg.norm(solver_data.A @ solver_data.r - solver_data.b) / np.linalg.norm(solver_data.b)
+        print(f"Relative solver residual ||A*r - b||/||b|| = {rel_res:.1e} ")

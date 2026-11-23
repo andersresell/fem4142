@@ -9,8 +9,8 @@ if __name__ == "__main__":
     Ly = R
     q = -1e6
     problem_type = ProblemType.PLATE
-    nEx = 4
-    nEy = 4
+    nEx = 20  # 4
+    nEy = 20  # 4
     thickness_ratios = np.logspace(1, 6, 10)
     # thickness_ratios = [10, 20, 30, 50, 100, 200, 300, 500, 1000, 1e6]
     # thickness_ratios = [10, 100, 1000, 10000]
@@ -19,9 +19,7 @@ if __name__ == "__main__":
 
     plt.figure()
 
-    element_types = [
-        ElementType.Q4, ElementType.Q4R, ElementType.Q8R, ElementType.Q8, ElementType.Q9, ElementType.Q16
-    ]
+    element_types = [ElementType.Q4, ElementType.Q4R, ElementType.Q8R, ElementType.Q8, ElementType.Q9, ElementType.Q16]
 
     element_types = [ElementType.Q16]
     for element_type in element_types:
