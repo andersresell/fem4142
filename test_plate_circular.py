@@ -1,4 +1,4 @@
-from src.useful_imports import *  #import required functions
+from fem.useful_imports import *  #import required functions
 
 if __name__ == "__main__":
 
@@ -70,7 +70,7 @@ if __name__ == "__main__":
             if clamped:
                 wc_k = 1.0 / 64 * abs(q) * R**4 / D
             else:
-                wc_k = 1.0 / 16 * abs(q) * R**4 / D
+                wc_k = (5 + nu) / (64 * (1 + nu)) * abs(q) * R**4 / D
 
             wc_over_wc_k.append(wc / wc_k)
 

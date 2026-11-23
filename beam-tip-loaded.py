@@ -1,6 +1,5 @@
-from src.useful_imports import *  #import required functions
+from fem.useful_imports import *  #import required functions
 
-np.random.seed(0)
 if __name__ == "__main__":
 
     E = 210e9  # Young's modulus in Pa
@@ -25,7 +24,6 @@ if __name__ == "__main__":
     #====================================================================
     config = create_config(E, nu, h, element_type, problem_type)
     config.hourglass_scaling = 0.1
-    config.stress_reconstruction_method = STRESS_RECONSTRUCTION_EXTRAPOLATED_FULL
 
     #====================================================================
     # Create a rectangular structured mesh

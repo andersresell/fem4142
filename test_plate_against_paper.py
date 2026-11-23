@@ -1,4 +1,4 @@
-from src.useful_imports import *  #import required functions
+from fem.useful_imports import *  #import required functions
 
 if __name__ == "__main__":
 

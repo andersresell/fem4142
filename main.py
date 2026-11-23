@@ -1,17 +1,16 @@
-from src.useful_imports import *  #import required functions
+from fem.useful_imports import *  #import required functions
 
-np.random.seed(0)
 if __name__ == "__main__":
 
     E = 210e9  # Young's modulus in Pa
     nu = 0.3  # Poisson's ratio
-    h = 0.5  # Plate thickness in m
+    h = 1  # Plate thickness in m
     Lx = 10  #Length in x-direction
-    Ly = Lx / 100  #Length in y-direction
+    Ly = Lx / 10  #Length in y-direction
     q = 1000  #Line load applied to the top edge
     element_type = ELEMENT_TYPE_Q16  #Use quadrilateral element
     problem_type = PROBLEM_TYPE_PLANE_STRESS  #Specify that a plane stress problem is solved
-    nEx = 1  #Number of elements in x-direction
+    nEx = 10  #Number of elements in x-direction
     nEy = 1  #Number of elements in y-direction
 
     p0 = q / h  #Equivalent pressure load for plane stress problem
@@ -22,7 +21,6 @@ if __name__ == "__main__":
     #====================================================================
     config = create_config(E, nu, h, element_type, problem_type)
     config.hourglass_scaling = 0.1
-    config.stress_reconstruction_method = STRESS_RECONSTRUCTION_EXTRAPOLATED_FULL
 
     #====================================================================
     # Create a rectangular structured mesh
@@ -38,7 +36,7 @@ if __name__ == "__main__":
     # add_boundary_condition(config, mesh, "east", DOF_U, 0)
     # add_boundary_condition(config, mesh, "east", DOF_V, 1)
     #====================================================================
-    # Assign a linearly varying load on the top edge named "north"
+    # Assign a uniform pressure load on the top edge named "north"
     #====================================================================
     load_func = lambda x, y: p0
     add_load(config, mesh, "north", LOAD_TYPE_PRESSURE, load_func)
