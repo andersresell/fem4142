@@ -323,3 +323,17 @@ def test_plot_field_with_an_unknown_field_gives_a_clear_error():
     fig, ax = plt.subplots()
     with pytest.raises(ValueError, match="sigma_xx"):
         plot_field(ax, config, mesh, solver_data, "stress")
+
+
+def test_stress_in_an_invalid_element_is_left_out_of_the_plot():
+    """A non-convex element has det(J) <= 0 near one corner, where the stress can't be calculated. Those points are
+    left empty (NaN), instead of stopping the program."""
+    config = create_config(1.0, 0.3, 1.0, ElementType.Q4, ProblemType.PLANE_STRESS)
+    mesh = create_structured_quad_mesh(config, 1.0, 1.0, 1, 1)
+    mesh.nodes[mesh.node_sets["north_east"][0]] = [0.3, 0.3]  #Pull the corner in, so that the element is not convex
+    solver_data = create_solver_data(config, mesh)
+    solver_data.r[:] = np.random.default_rng(0).uniform(-1, 1, len(solver_data.r))
+    fig, ax = plt.subplots()
+    contours = plot_field(ax, config, mesh, solver_data, "sigma_xx")
+    values = contours.get_array()
+    assert np.any(values.mask) and not np.all(values.mask)  #Some points are left out, but not all

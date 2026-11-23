@@ -263,7 +263,8 @@ def perturb_mesh_nodes_of_structured_Q4_mesh(mesh_Q4: Mesh, Lx, Ly, nEx, nEy, pe
     if perturb_mesh_nodes_factor == 0:
         return
 
-    #Each node can move at most 0.3 element lengths, so that neighbouring nodes never cross each other
+    #Each node can move at most 0.3 element lengths, so that neighbouring nodes never cross each other.
+    #(Close to 1, a few elements can still become invalid, see warn_about_invalid_elements.)
     SAFETY_FACTOR = 0.6
     nodes = mesh_Q4.nodes
     dx = Lx / nEx
@@ -290,6 +291,22 @@ def perturb_mesh_nodes_of_structured_Q4_mesh(mesh_Q4: Mesh, Lx, Ly, nEx, nEy, pe
         nodes[i, :] = np.array([x_perturbed, y_perturbed])
 
 
+def warn_about_invalid_elements(mesh: Mesh):
+    """Prints a warning if some elements are so distorted that they are not convex (or their nodes are numbered
+    clockwise). Then det(J) <= 0 near a corner, which means that the element is not valid. (det(J) at a corner is
+    proportional to the cross product of the two edges that meet there.)"""
+    corners = mesh.nodes[mesh.elements[:, :4]]  #The first four nodes of an element are the corners, counter-clockwise
+    invalid_elements = set()
+    for k in range(4):
+        edge_in = corners[:, k] - corners[:, k - 1]
+        edge_out = corners[:, (k + 1) % 4] - corners[:, k]
+        cross_product = edge_in[:, 0] * edge_out[:, 1] - edge_in[:, 1] * edge_out[:, 0]
+        invalid_elements.update(np.where(cross_product <= 0)[0].tolist())
+    if len(invalid_elements) > 0:
+        print(f"WARNING: {len(invalid_elements)} element(s) are so distorted that they are not valid (det(J) <= 0 "
+              f"near a corner): {sorted(invalid_elements)[:10]}. Check the positions of their nodes.")
+
+
 def create_structured_quad_mesh(config: Config, Lx, Ly, nEx, nEy, perturb_mesh_nodes_factor=0) -> Mesh:
     """Creates a structured rectangular quad mesh with the specified parameters.
     Args:
@@ -314,5 +331,6 @@ def create_structured_quad_mesh(config: Config, Lx, Ly, nEx, nEy, perturb_mesh_n
 
     mesh_Q4 = create_structured_Q4_mesh(Lx, Ly, nEx, nEy)
     perturb_mesh_nodes_of_structured_Q4_mesh(mesh_Q4, Lx, Ly, nEx, nEy, perturb_mesh_nodes_factor)
+    warn_about_invalid_elements(mesh_Q4)
     mesh = create_higher_order_quad_mesh_from_Q4_mesh(mesh_Q4, config)
     return mesh

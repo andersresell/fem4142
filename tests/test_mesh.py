@@ -71,3 +71,16 @@ def test_invalid_mesh_input_raises_an_error(nEx, nEy, Lx, Ly):
 def test_invalid_perturbation_factor_raises_an_error(factor):
     with pytest.raises(ValueError):
         make_mesh(ElementType.Q4, perturb_mesh_nodes_factor=factor)
+
+
+def test_too_large_perturbation_gives_a_warning_about_invalid_elements(capsys):
+    """With perturb_mesh_nodes_factor close to 1, a few elements can become non-convex, so that det(J) <= 0 near a
+    corner. This is the mesh from main.py, where 2 of the 2000 elements become invalid."""
+    make_mesh(ElementType.Q4, 200, 10, 10.0, 1.25, perturb_mesh_nodes_factor=1.0)
+    output = capsys.readouterr().out
+    assert "WARNING" in output and "[759, 1067]" in output
+
+
+def test_moderate_perturbation_gives_no_warning(capsys):
+    make_mesh(ElementType.Q4, 200, 10, 10.0, 1.25, perturb_mesh_nodes_factor=0.5)
+    assert "WARNING" not in capsys.readouterr().out

@@ -36,16 +36,18 @@ def calc_N_at_points(xi_eta, element_type):
 
 
 def calc_dNdx_dNdy_at_points(dNdxi, dNdeta, x_l, y_l):
-    """Returns dN/dx, dN/dy and det(J) at many points in an element with node coordinates x_l, y_l."""
+    """Returns dN/dx, dN/dy and det(J) at many points in an element with node coordinates x_l, y_l.
+    In a badly distorted element, det(J) can be zero or negative at some points (e.g. at a corner), and then
+    dN/dx and dN/dy are set to NaN (not a number) there, so that e.g. the stresses are not shown there."""
     #The Jacobian J = [[dx/dxi, dy/dxi], [dx/deta, dy/deta]] at each point
     dxdxi, dydxi = dNdxi @ x_l, dNdxi @ y_l
     dxdeta, dydeta = dNdeta @ x_l, dNdeta @ y_l
     detJ = dxdxi * dydeta - dydxi * dxdeta
-    assert np.all(detJ > SMALL_VAL)
+    detJ_valid = np.where(detJ > 0, detJ, np.nan)  #Dividing by NaN gives NaN
     #[dN/dx, dN/dy] = inverse(J) * [dN/dxi, dN/deta], written out for a 2x2 matrix.
     #([:, None] makes the arrays with one value per point work together with arrays with one row per point)
-    dNdx = (dydeta[:, None] * dNdxi - dydxi[:, None] * dNdeta) / detJ[:, None]
-    dNdy = (-dxdeta[:, None] * dNdxi + dxdxi[:, None] * dNdeta) / detJ[:, None]
+    dNdx = (dydeta[:, None] * dNdxi - dydxi[:, None] * dNdeta) / detJ_valid[:, None]
+    dNdy = (-dxdeta[:, None] * dNdxi + dxdxi[:, None] * dNdeta) / detJ_valid[:, None]
     return dNdx, dNdy, detJ
 
 
