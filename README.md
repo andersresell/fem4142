@@ -46,7 +46,7 @@ if __name__ == "__main__":
     mesh = create_structured_quad_mesh(config, Lx, Ly, nEx, nEy)
 
     #====================================================================
-    # Add fixed boundary condition  to the left edge called "west"
+    # Add fixed boundary condition to the left edge called "west"
     #====================================================================
     add_boundary_condition(config, mesh, "west", Dof.U, 0)  #set u to 0
     add_boundary_condition(config, mesh, "west", Dof.V, 0)  #set v to 0
@@ -107,20 +107,29 @@ If we lower Ly from 1.5 to 0.5, the relative tip error is reduced from 2.98% to 
 
 ## Usage
 
-You need Python 3.10 or newer with **numpy**, **scipy** and **matplotlib**. With Anaconda, these are already
-installed. Otherwise, install them with
+The program needs Python with **numpy**, **scipy** and **matplotlib**. It is tested with Python 3.10 to 3.13,
+numpy 2.2 to 2.5, scipy 1.15 to 1.18 and matplotlib 3.10 and 3.11. Other versions will probably work as well, but
+this is not guaranteed (Python must be version 3.10 or newer).
 
-```bash
-pip install numpy scipy matplotlib
-```
-
-(On Linux, the plot window may also need tkinter, e.g. `sudo apt install python3-tk`.)
-
-Then download the project, either with `git clone https://github.com/andersresell/fem4142.git` or as a ZIP file
-from GitHub, and run the example from the project folder:
+Download the project, e.g. with `git clone https://github.com/andersresell/fem4142.git`, and run the example from
+the project folder:
 
 ```bash
 python beam_example.py
 ```
 
 More examples are found in the folder `examples`.
+
+The GUI is interactive, so run the scripts as normal Python scripts, e.g. from a terminal or with the Run button in
+VS Code. In Spyder, plots are by default shown as static images in the console, which makes the buttons in the GUI
+unresponsive. To fix this, select *Tools → Preferences → IPython console → Graphics → Backend: Automatic*, and
+restart the console. For the same reason, the GUI does not work in Jupyter notebooks.
+
+## Tests
+
+The tests are in the folder `tests`. They need **pytest**, which can be installed with `pip install pytest` (or
+`conda install pytest` with Anaconda). The tests are run from the project folder with
+
+```bash
+python -m pytest
+```

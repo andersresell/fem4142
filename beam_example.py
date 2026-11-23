@@ -24,7 +24,7 @@ if __name__ == "__main__":
     mesh = create_structured_quad_mesh(config, Lx, Ly, nEx, nEy)
 
     #====================================================================
-    # Add fixed boundary condition  to the left edge called "west"
+    # Add fixed boundary condition to the left edge called "west"
     #====================================================================
     add_boundary_condition(config, mesh, "west", Dof.U, 0)  #set u to 0
     add_boundary_condition(config, mesh, "west", Dof.V, 0)  #set v to 0
