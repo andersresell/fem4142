@@ -375,3 +375,36 @@ def test_plate_applied_load_contour():
     contours = plot_field(ax, config, mesh, solver_data, "applied_load")
     assert contours.get_clim() == pytest.approx((1000.0 + 100.0, 2000.0 + 100.0))
     assert not plot_tools.is_stress_field("applied_load")
+
+
+def test_outward_normals():
+    config = create_config(1.0, 0.3, 1.0, ElementType.Q9, ProblemType.PLANE_STRESS)
+    mesh = create_structured_quad_mesh(config, 2.0, 1.0, 2, 2)
+    normals = plot_tools.calc_outward_normals(mesh, config.element_type)
+    x, y = mesh.nodes[:, 0], mesh.nodes[:, 1]
+    assert normals[mesh.node_sets["north_east"][0]] == pytest.approx([1 / np.sqrt(2), 1 / np.sqrt(2)])
+    middle_of_south_edge = np.where(np.isclose(y, 0.0) & np.isclose(x, 1.0))[0][0]
+    assert normals[middle_of_south_edge] == pytest.approx([0.0, -1.0])
+    inside = (x > 0) & (x < 2) & (y > 0) & (y < 1)
+    assert np.all(np.isnan(normals[inside]))
+
+
+@pytest.mark.parametrize("traction, arrows_start_at_the_edge", [((-1000.0, 0.0), False), ((1000.0, 0.0), True)],
+                         ids=["pushing", "pulling"])
+def test_forces_that_point_into_the_body_are_drawn_outside_it(traction, arrows_start_at_the_edge):
+    """A traction on the east edge (x = 4). Pushing arrows end at the edge, and pulling arrows start at it."""
+    config = create_config(210e9, 0.3, 1.0, ElementType.Q9, ProblemType.PLANE_STRESS)
+    mesh = create_structured_quad_mesh(config, 4.0, 1.0, 4, 2)
+    add_boundary_condition(config, mesh, "west", Dof.U, 0)
+    add_boundary_condition(config, mesh, "west", Dof.V, 0)
+    add_load(config, mesh, "east", LoadType.TRACTION, lambda x, y: traction)
+    solver_data = create_solver_data(config, mesh)
+    solve(config, solver_data, mesh)
+    config.arrow_type = "external forces"
+    config.disp_scaling = 0  #Keep the nodes on the edge
+    plot = plot_tools.Plot(config, mesh, solver_data)
+    arrows = [collection for collection in plot.ax.collections if isinstance(collection, matplotlib.quiver.Quiver)][0]
+    if arrows_start_at_the_edge:
+        assert np.allclose(arrows.X, 4.0)
+    else:
+        assert np.all(arrows.X > 4.0)
