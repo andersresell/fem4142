@@ -240,9 +240,7 @@ class Plot:
                 text_box.set_val(f"{value:.3e}")
                 text_box.eventson = True
 
-        cmap = plt.get_cmap(cmap_name).copy()
-        cmap.set_over('lightgrey')
-        cmap.set_under('lightgrey')
+        cmap = plt.get_cmap(cmap_name).with_extremes(over='lightgrey', under='lightgrey')
 
         #====================================================================
         # Plot the mesh body with the specified contour type
@@ -394,6 +392,8 @@ class Plot:
     def plot_arrows(self, x, y, field_x, field_y, label, color, domain_scale, user_scale, show_max_norm=False):
         #only plot arrows with a non negligible magnitude
         values_keep = np.where(np.sqrt(field_x**2 + field_y**2) > SMALL_VAL)[0]
+        if len(values_keep) == 0:  #Nothing to draw, e.g. no external forces, or NaN from a singular system
+            return
         field_x_keep = field_x[values_keep]
         field_y_keep = field_y[values_keep]
         x_keep = x[values_keep]

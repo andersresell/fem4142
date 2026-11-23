@@ -83,6 +83,31 @@ def test_plate_stress_contour_gives_a_clear_error_until_it_is_implemented():
         plot_tools.Plot(config, mesh, solver_data)
 
 
+@pytest.mark.parametrize("contour_type, arrow_type", [("disp", "disp"), ("stress", "reaction forces")])
+def test_gui_shows_nan_results_without_crashing(contour_type, arrow_type):
+    """An exactly singular system gives NaN results (see test_solver.py). The GUI should still open,
+    so that the user can see that something is wrong."""
+    config, mesh, solver_data = solved_plane_stress_problem()
+    solver_data.r[:] = np.nan
+    solver_data.R_int[:] = np.nan
+    config.contour_type = contour_type
+    config.arrow_type = arrow_type
+    plot_tools.Plot(config, mesh, solver_data)
+
+
+def test_arrows_with_nothing_to_draw():
+    """No external forces, since the structure is only loaded by a prescribed displacement."""
+    config = create_config(210e9, 0.3, 1.0, ELEMENT_TYPE_Q4, PROBLEM_TYPE_PLANE_STRESS)
+    mesh = create_structured_quad_mesh(config, 4.0, 1.0, 4, 2)
+    add_boundary_condition(config, mesh, "west", DOF_U, 0)
+    add_boundary_condition(config, mesh, "west", DOF_V, 0)
+    add_boundary_condition(config, mesh, "east", DOF_U, 0.01)
+    solver_data = create_solver_data(config, mesh)
+    solve(config, solver_data, mesh)
+    config.arrow_type = "external forces"
+    plot_tools.Plot(config, mesh, solver_data)
+
+
 def test_gui_draws_the_plot_only_once(monkeypatch):
     calls = []
     original_plot_2d = plot_tools.Plot.plot_2d

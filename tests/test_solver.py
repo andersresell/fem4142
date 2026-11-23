@@ -2,8 +2,11 @@
 import pytest
 from problems import (ALL_ELEMENT_TYPES, element_name, find_node_closest_to, solve_cantilever, solve_square_plate)
 
+from scipy.sparse import csc_matrix
+
 import fem.element_stiffness as element_stiffness
 import fem.stress_recovery as stress_recovery
+from fem.solver import solve_linear_system
 from fem.useful_imports import *
 
 #====================================================================
@@ -12,7 +15,7 @@ from fem.useful_imports import *
 #====================================================================
 
 # Q9R (Q9 with 2x2 Gauss points) has spurious zero energy modes that are not
-# suppressed in a small patch, which makes the system singular. See the test below.
+# suppressed in a small patch, which makes the system singular. See the tests below.
 PATCH_TEST_ELEMENT_TYPES = [et for et in ALL_ELEMENT_TYPES if et != ELEMENT_TYPE_Q9R]
 
 
@@ -81,6 +84,58 @@ def test_Q4R_needs_hourglass_stabilization():
 def test_Q9R_has_spurious_zero_energy_modes():
     """With 2x2 Gauss points, Q9 has 3 spurious zero energy modes in addition to the 3 rigid body modes."""
     assert count_zero_energy_modes(single_element_plane_stress_stiffness(ELEMENT_TYPE_Q9R)) == 6
+
+
+#====================================================================
+# Singular systems: The solver prints a warning, but still gives a
+# result, so that students can see what happens
+#====================================================================
+
+
+def solve_rectangle_in_tension(element_type, fix_v=True):
+    """u = 0 on the west edge and v = 0 at the south-west corner: Just enough to prevent rigid body
+    motion. Without the corner condition (fix_v=False), the body can move freely in the y-direction."""
+    config = create_config(100.0, 0.25, 1.0, element_type, PROBLEM_TYPE_PLANE_STRESS)
+    mesh = create_structured_quad_mesh(config, 2.0, 1.0, 3, 3)
+    add_boundary_condition(config, mesh, "west", DOF_U, 0)
+    if fix_v:
+        add_boundary_condition(config, mesh, "south_west", DOF_V, 0)
+    add_load(config, mesh, "east", LOAD_TYPE_TRACTION, lambda x, y: (3.0, 0.0))
+    solver_data = create_solver_data(config, mesh)
+    solve(config, solver_data, mesh)
+
+
+@pytest.mark.parametrize(
+    "solve_problem",
+    [
+        lambda: solve_rectangle_in_tension(ELEMENT_TYPE_Q4, fix_v=False),
+        lambda: solve_rectangle_in_tension(ELEMENT_TYPE_Q9R),
+        lambda: solve_square_plate(ELEMENT_TYPE_Q9R, 4),
+        lambda: solve_square_plate(ELEMENT_TYPE_Q4R, 4),  # Q4R only has hourglass stabilization for plane stress
+    ],
+    ids=["missing boundary condition", "Q9R plane stress", "Q9R plate", "Q4R plate"])
+def test_singular_system_gives_a_warning(solve_problem, capsys):
+    solve_problem()
+    assert "WARNING: The system matrix is singular" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("element_type", ALL_ELEMENT_TYPES, ids=element_name)
+def test_well_posed_problems_give_no_warning(element_type, capsys):
+    solve_cantilever(element_type, 4, 2)
+    if element_type != ELEMENT_TYPE_Q9R:  #Singular with these supports (see above)
+        solve_rectangle_in_tension(element_type)
+    if element_type not in [ELEMENT_TYPE_Q4R, ELEMENT_TYPE_Q9R]:  #Singular for this plate (see above)
+        solve_square_plate(element_type, 4)
+    assert "singular" not in capsys.readouterr().out
+
+
+def test_exactly_singular_system_gives_a_warning_and_nan(capsys):
+    """This happens e.g. if an element stiffness matrix is zero, like an unfinished Q4_USER element.
+    No solution exists, but the program continues, so that the results can be inspected."""
+    A = csc_matrix(np.diag([1.0, 0.0, 2.0]))
+    r = solve_linear_system(A, np.ones(3))
+    assert np.all(np.isnan(r))
+    assert "WARNING: The system matrix is singular" in capsys.readouterr().out
 
 
 #====================================================================
@@ -158,13 +213,13 @@ CANTILEVER_TIP_DEFLECTION_10x2 = {
     ELEMENT_TYPE_Q16: -1.914770054896495e-05,
 }
 
+# Q4R and Q9R are left out: The simply supported plate is singular with these elements
+# (see test_singular_system_gives_a_warning), so their results depend on round-off errors.
 PLATE_CENTER_DEFLECTION_4x4 = {
     ELEMENT_TYPE_Q4: -2.4374421611534405e-06,
-    ELEMENT_TYPE_Q4R: -0.0002456635512280062,
     ELEMENT_TYPE_Q8: -0.00020393378935936916,
     ELEMENT_TYPE_Q8R: -0.0002262780345961578,
     ELEMENT_TYPE_Q9: -0.00021774214739001354,
-    ELEMENT_TYPE_Q9R: -0.00022875758924475976,
     ELEMENT_TYPE_Q16: -0.00022243574839503469,
 }
 
@@ -177,7 +232,7 @@ def test_cantilever_result_is_unchanged(element_type):
     assert v_tip == pytest.approx(CANTILEVER_TIP_DEFLECTION_10x2[element_type], rel=1e-9)
 
 
-@pytest.mark.parametrize("element_type", ALL_ELEMENT_TYPES, ids=element_name)
+@pytest.mark.parametrize("element_type", PLATE_CENTER_DEFLECTION_4x4.keys(), ids=element_name)
 def test_plate_result_is_unchanged(element_type):
     config, mesh, solver_data = solve_square_plate(element_type, 4)
     w, thetax, thetay = unpack_solution(config, solver_data.r)

@@ -1,5 +1,5 @@
-from scipy.sparse import lil_matrix, csr_matrix
-from scipy.sparse.linalg import spsolve
+from scipy.sparse import lil_matrix
+from scipy.sparse.linalg import splu
 import time
 from fem.utils import Config
 from fem.mesh import Mesh
@@ -72,6 +72,37 @@ def assemble_stiffness_matrix(mesh: Mesh, config: Config, solver_data: SolverDat
     return K
 
 
+SINGULAR_MATRIX_WARNING = """WARNING: The system matrix is singular (or nearly singular), so the solution is not reliable.
+Possible causes:
+  - Missing boundary conditions, so that the structure can move freely (rigid body motion)
+  - Spurious zero energy modes of elements with reduced integration (e.g. Q4R or Q9R)
+  - An element stiffness matrix that is zero or wrong (e.g. an unfinished Q4_USER element)"""
+
+
+def solve_linear_system(A, b):
+    """Solves A*r = b by LU factorization (A = L*U). A must be a sparse matrix in CSC format.
+    If A is singular, a warning is printed, but we continue so that the results can be inspected."""
+    try:
+        lu = splu(A)
+    except RuntimeError:  #A is exactly singular, so the system can't be solved at all
+        print(SINGULAR_MATRIX_WARNING)
+        print("The matrix is exactly singular, so no solution exists. The solution is set to NaN (not a number).")
+        return np.full(len(b), np.nan)
+    r = lu.solve(b)
+
+    #====================================================================
+    # Check if A is singular: det(A) is the product of the diagonal of U,
+    # so A is singular if U has a zero on its diagonal. Due to round-off
+    # errors, we check for values that are practically zero.
+    #====================================================================
+    U_diagonal = np.abs(lu.U.diagonal()[lu.perm_c])  #Same order as the columns of A
+    column_size = abs(A).max(axis=0).toarray().ravel()  #Compare with A, so that units don't matter
+    practically_zero = A.shape[0] * np.finfo(float).eps  #The size of round-off errors
+    if np.min(U_diagonal / column_size) < practically_zero:
+        print(SINGULAR_MATRIX_WARNING)
+    return r
+
+
 def solve(config: Config, solver_data: SolverData, mesh: Mesh):
     """Assembles the stiffness matrix, applies boundary conditions, and solves the system K*r = R."""
 
@@ -86,7 +117,7 @@ def solve(config: Config, solver_data: SolverData, mesh: Mesh):
 
     bcs.assign_boundary_conditions(config, mesh, solver_data)
 
-    solver_data.r = spsolve(solver_data.A, solver_data.b)  #Solve the linear system
+    solver_data.r = solve_linear_system(solver_data.A, solver_data.b)
 
     solver_data.R_int = solver_data.K @ solver_data.r  #Calculate internal forces
 
