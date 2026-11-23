@@ -3,6 +3,7 @@ The figures are drawn into memory (see conftest.py), so no windows open."""
 import os
 
 import matplotlib.pyplot as plt
+import matplotlib.quiver
 import pytest
 
 import fem.plot_tools as plot_tools
@@ -160,11 +161,73 @@ def test_contour_limit_boxes_are_only_shown_when_the_limits_are_specified():
     assert plot.box_contour_max.ax.get_visible() and plot.box_contour_min.ax.get_visible()
 
 
-def test_disp_scale_is_only_shown_for_plane_stress():
-    config, mesh, solver_data = solved_plate_problem()
-    assert plot_tools.Plot(config, mesh, solver_data).box_disp_scale is None
+def test_automatic_displacement_scaling_can_be_replaced_by_true_scale():
+    config, mesh, solver_data = solved_plane_stress_problem()  #A 4 x 1 mesh
+    assert config.disp_scaling == "auto"
+    plot = plot_tools.Plot(config, mesh, solver_data)
+    u, v = unpack_solution(config, solver_data.r)
+    largest_displacement = np.max(np.sqrt(u**2 + v**2))
+    assert config.disp_scaling * largest_displacement == pytest.approx(0.1 * 4.0, rel=0.05)  #10% of the mesh size
+    assert float(plot.box_disp_scale.text) == config.disp_scaling  #The factor is shown in the text box
+
+    plot.box_disp_scale.set_val("1")  #Typing and pressing enter redraws the plot
+    assert config.disp_scaling == 1.0
+    plot.box_disp_scale.set_val("auto")
+    assert config.disp_scaling * largest_displacement == pytest.approx(0.4, rel=0.05)
+
+
+def test_plot_field_with_automatic_displacement_scaling():
     config, mesh, solver_data = solved_plane_stress_problem()
-    assert plot_tools.Plot(config, mesh, solver_data).box_disp_scale is not None
+    fig, ax = plt.subplots()
+    plot_field(ax, config, mesh, solver_data, "u_mag")
+    assert config.disp_scaling == "auto"  #plot_field doesn't change config
+
+
+@pytest.mark.parametrize("solve_problem, expected_labels", [
+    (solved_plane_stress_problem, [r"$u$ and $v$ prescribed"]),
+    (solved_plate_problem, [r"$w$ prescribed", r"$\theta_x$ prescribed", r"$\theta_y$ prescribed"]),
+], ids=["plane stress", "plate"])
+def test_boundary_conditions_are_shown_by_default_and_explained_in_the_legend(solve_problem, expected_labels):
+    config, mesh, solver_data = solve_problem()
+    plot = plot_tools.Plot(config, mesh, solver_data)
+    legend_labels = [text.get_text() for text in plot.ax.get_legend().get_texts()]
+    assert sorted(legend_labels) == sorted(expected_labels)
+
+
+def test_disp_scale_and_arrows_are_only_shown_for_plane_stress():
+    config, mesh, solver_data = solved_plate_problem()
+    plot = plot_tools.Plot(config, mesh, solver_data)
+    assert plot.box_disp_scale is None and plot.radio_arrows is None
+    config, mesh, solver_data = solved_plane_stress_problem()
+    plot = plot_tools.Plot(config, mesh, solver_data)
+    assert plot.box_disp_scale is not None and plot.radio_arrows is not None
+
+
+def test_arrows_for_a_plate_give_a_clear_error():
+    config, mesh, solver_data = solved_plate_problem()
+    config.arrow_type = "reaction forces"
+    with pytest.raises(ValueError, match="plane stress"):
+        plot_tools.Plot(config, mesh, solver_data)
+
+
+@pytest.mark.parametrize("nE", [1, 4, 30])
+def test_the_longest_arrow_follows_the_symbol_size(nE):
+    config = create_config(210e9, 0.3, 1.0, ElementType.Q4, ProblemType.PLANE_STRESS)
+    mesh = create_structured_quad_mesh(config, 1.0, 1.0, nE, nE)
+    add_boundary_condition(config, mesh, "west", Dof.U, 0)
+    add_boundary_condition(config, mesh, "west", Dof.V, 0)
+    add_load(config, mesh, "east", LoadType.TRACTION, lambda x, y: (1000.0, 0.0))
+    solver_data = create_solver_data(config, mesh)
+    solve(config, solver_data, mesh)
+    config.arrow_type = "external forces"
+    plot = plot_tools.Plot(config, mesh, solver_data)
+    arrows = [collection for collection in plot.ax.collections if isinstance(collection, matplotlib.quiver.Quiver)][0]
+    longest_arrow = np.max(np.sqrt(arrows.U**2 + arrows.V**2)) * plot.get_screen_length_of_unit_length()
+    window_scale = plot.fig.get_size_inches()[1] / plot.DESIGN_HEIGHT
+    expected_length = max(5 * plot.get_symbol_size(), 25 * window_scale)
+    #The arrows make the plot a bit larger after they are drawn, which makes them a bit shorter on the screen
+    assert longest_arrow == pytest.approx(expected_length, rel=0.2)
+    assert "largest" in plot.ax.get_legend().get_texts()[0].get_text()
 
 
 def test_nodes_and_element_edges_can_be_hidden_separately():

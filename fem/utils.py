@@ -49,9 +49,9 @@ class Config:
     #====================================================================
     show_nodes: bool = True
     show_element_edges: bool = True
-    disp_scaling: float = 1  #Scaling factor for displacements
+    disp_scaling: float | str = "auto"  #Factor for the displacements in the plots. "auto": The largest is 10% of the mesh size
     show_labels: bool = False  #Node numbers, and element numbers in parentheses
-    show_bcs: bool = False
+    show_bcs: bool = True
     contour: str = "u_mag"  #The field to show, e.g. "u_mag" or "sigma_xx" (see plot_tools.get_field_names)
     stress_recovery: str = "consistent"  #"consistent" or "L2" (see stress_recovery.py)
     arrow_type: str = "none"  #"none", "disp", "external forces" or "reaction forces"

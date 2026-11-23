@@ -42,14 +42,27 @@ DOF_FIELDS = {"u": 0, "v": 1, "w": 0, "theta_x": 1, "theta_y": 2}
 COLORMAP = plt.get_cmap("turbo").with_extremes(over="lightgrey", under="lightgrey")
 GRAY_COLORMAP = mcolors.ListedColormap(["grey"])  #Used when no field is shown
 
-#Symbols for the boundary conditions, with the node at (0, 0). Dof.V: A triangle with its tip at the node and a line
-#underneath. Dof.U: The same, rotated 90 degrees. Dof.THETAX and Dof.THETAY: A vertical and a horizontal line.
+#====================================================================
+# Symbols for the boundary conditions, with the node at (0, 0):
+#   v prescribed: A triangle with its tip at the node, and a line underneath (a roller)
+#   u prescribed: The same, rotated 90 degrees
+#   u and v prescribed: A triangle on a hatched ground (a pin)
+#   w prescribed: A dot
+#   thetax and thetay prescribed: A vertical and a horizontal line
+# Each symbol has a size (relative to the symbol size) and a label for the legend.
+#====================================================================
 M, L = Path.MOVETO, Path.LINETO  #Move the pen, or draw a line
 BC_SYMBOLS = {
-    Dof.V: Path([(0, 0), (-0.6, -0.8), (0.6, -0.8), (0, 0), (-0.6, -1), (0.6, -1)], [M, L, L, L, M, L]),
-    Dof.U: Path([(0, 0), (-0.8, 0.6), (-0.8, -0.6), (0, 0), (-1, 0.6), (-1, -0.6)], [M, L, L, L, M, L]),
-    Dof.THETAX: Path([(0, -1), (0, 1)], [M, L]),
-    Dof.THETAY: Path([(-1, 0), (1, 0)], [M, L]),
+    "v": (Path([(0, 0), (-0.6, -0.8), (0.6, -0.8), (0, 0), (-0.6, -1), (0.6, -1)], [M, L, L, L, M, L]), 2.8,
+          r"$v$ prescribed"),
+    "u": (Path([(0, 0), (-0.8, 0.6), (-0.8, -0.6), (0, 0), (-1, 0.6), (-1, -0.6)], [M, L, L, L, M, L]), 2.8,
+          r"$u$ prescribed"),
+    "u and v": (Path([(0, 0), (-0.6, -0.75), (0.6, -0.75), (0, 0), (-0.9, -0.75), (0.9, -0.75), (-0.9, -1),
+                      (-0.65, -0.75), (-0.45, -1), (-0.2, -0.75), (0, -1), (0.25, -0.75), (0.45, -1), (0.7, -0.75)],
+                     [M, L, L, L, M, L, M, L, M, L, M, L, M, L]), 2.8, r"$u$ and $v$ prescribed"),
+    "w": ("o", 0.9, r"$w$ prescribed"),
+    "theta_x": (Path([(0, -1), (0, 1)], [M, L]), 2.0, r"$\theta_x$ prescribed"),
+    "theta_y": (Path([(-1, 0), (1, 0)], [M, L]), 2.0, r"$\theta_y$ prescribed"),
 }
 
 
@@ -123,9 +136,23 @@ def calc_field_in_element(config: Config, mesh: Mesh, solver_data: SolverData, f
     return stress[:, stress_recovery.get_stress_names(config.problem_type).index(field)]
 
 
+def calc_disp_scaling(config: Config, mesh: Mesh, solver_data: SolverData):
+    """The factor that the displacements are multiplied by in the plots. If config.disp_scaling is "auto", the
+    largest displacement is shown as 10% of the size of the mesh (rounded to two digits)."""
+    if config.disp_scaling != "auto":
+        return config.disp_scaling
+    u, v = unpack_solution(config, solver_data.r)
+    largest_displacement = np.max(np.sqrt(u**2 + v**2))
+    if not largest_displacement > 0:  #No displacements, or NaN from a singular system
+        return 1.0
+    mesh_size = max(np.ptp(mesh.nodes[:, 0]), np.ptp(mesh.nodes[:, 1]))
+    return float(f"{0.1 * mesh_size / largest_displacement:.2g}")
+
+
 def plot_field(ax, config: Config, mesh: Mesh, solver_data: SolverData, field, nodal_stress_L2=None):
     """Draws a field (e.g. "u_mag" or "sigma_xx", see get_field_names) as a contour plot on the mesh, in the
-    matplotlib axes ax. For plane stress, the mesh is deformed by the displacements times config.disp_scaling.
+    matplotlib axes ax. For plane stress, the mesh is deformed by the displacements times config.disp_scaling
+    (see calc_disp_scaling).
     Stresses are calculated with config.stress_recovery ("consistent" or "L2"). The element edges are drawn if
     config.show_element_edges is True. Returns the contour plot, which can be used to add a colorbar. Example:
 
@@ -155,13 +182,15 @@ def plot_field(ax, config: Config, mesh: Mesh, solver_data: SolverData, field, n
     values = np.zeros_like(x)
     NUM_DOFS = get_num_dofs_from_problem_type(config.problem_type)
     r = solver_data.r.reshape(-1, NUM_DOFS)  #One row per node
+    if config.problem_type == ProblemType.PLANE_STRESS:
+        disp_scaling = calc_disp_scaling(config, mesh, solver_data)
     for e in range(nE):
         nodeIDs = mesh.elements[e, :]
         x[e] = N @ mesh.nodes[nodeIDs, 0]
         y[e] = N @ mesh.nodes[nodeIDs, 1]
         if config.problem_type == ProblemType.PLANE_STRESS:  #Show the deformed shape
-            x[e] += config.disp_scaling * (N @ r[nodeIDs, 0])
-            y[e] += config.disp_scaling * (N @ r[nodeIDs, 1])
+            x[e] += disp_scaling * (N @ r[nodeIDs, 0])
+            y[e] += disp_scaling * (N @ r[nodeIDs, 1])
         values[e] = calc_field_in_element(config, mesh, solver_data, field, e, N, dNdxi, dNdeta, nodal_stress_L2)
 
     #The plot points of element e are numbered from e * (number of plot points per element)
@@ -245,6 +274,9 @@ class Plot:
             raise ValueError(f"Unknown config.contour '{config.contour}' for {config.problem_type.name}. "
                              f"Available: {', '.join(self.field_names)}")
 
+        if config.problem_type == ProblemType.PLATE and config.arrow_type != "none":
+            raise ValueError("Arrows are only available for plane stress problems. Use config.arrow_type = 'none'.")
+
         self.fig, self.ax = plt.subplots(figsize=(11, 8))
         plt.subplots_adjust(left=0.3, bottom=0.25)
         self.create_widgets()
@@ -277,13 +309,13 @@ class Plot:
                                            active=recovery_options.index(config.stress_recovery))
         self.radio_recovery.ax.set_title("Stress recovery:")
 
+        #Arrows are only shown for plane stress. (For plates, the loads and reactions are out of the plane.)
+        self.radio_arrows = None
         if config.problem_type == ProblemType.PLANE_STRESS:
             arrow_options = ["none", "disp", "external forces", "reaction forces"]
-        else:
-            arrow_options = ["none"]  #Arrows are not implemented for plates
-        self.radio_arrows = RadioButtons(get_widget_axes(0.03, 0.2, 0.02 * len(arrow_options)), arrow_options,
-                                         active=arrow_options.index(config.arrow_type))
-        self.radio_arrows.ax.set_title("Arrows:")
+            self.radio_arrows = RadioButtons(get_widget_axes(0.03, 0.2, 0.08), arrow_options,
+                                             active=arrow_options.index(config.arrow_type))
+            self.radio_arrows.ax.set_title("Arrows:")
 
         self.check_buttons = CheckButtons(
             get_widget_axes(0.03, 0.2, 0.08),
@@ -307,14 +339,15 @@ class Plot:
         #The widgets at the bottom
         self.slider_symbol_scale = Slider(plt.axes([0.4, 0.13, 0.45, 0.03]), "symbol size", 0, 5,
                                           valinit=config.symbol_scale)
-        self.slider_arrow_scale = Slider(plt.axes([0.4, 0.08, 0.45, 0.03]), "arrow size", 0, 10,
+        self.slider_arrow_scale = Slider(plt.axes([0.4, 0.08, 0.45, 0.03]), "arrow size", 0, 5,
                                          valinit=config.arrow_scale)
         self.save_button = Button(plt.axes([0.4, 0.02, 0.15, 0.04]), "Save Screen", color="lightblue",
                                   hovercolor="skyblue")
         self.save_button.on_clicked(self.save_screen)
 
         for radio in [self.radio_contour, self.radio_recovery, self.radio_arrows]:
-            radio.on_clicked(self.update)
+            if radio is not None:
+                radio.on_clicked(self.update)
         self.check_buttons.on_clicked(self.update)
         self.check_specify_limits.on_clicked(self.update)
         self.box_contour_max.on_submit(self.update)
@@ -337,18 +370,22 @@ class Plot:
         config = self.config
         config.contour = self.field_names[self.contour_labels.index(self.radio_contour.value_selected)]
         config.stress_recovery = self.radio_recovery.value_selected
-        config.arrow_type = self.radio_arrows.value_selected
+        if self.radio_arrows is not None:
+            config.arrow_type = self.radio_arrows.value_selected
         config.show_labels, config.show_nodes, config.show_element_edges, config.show_bcs = \
             self.check_buttons.get_status()
         config.specify_contour_limits = self.check_specify_limits.get_status()[0]
         config.symbol_scale = self.slider_symbol_scale.val
         config.arrow_scale = self.slider_arrow_scale.val
         if self.box_disp_scale is not None:
-            try:
-                config.disp_scaling = float(self.box_disp_scale.text)
-            except ValueError:
-                print(f"Invalid input for the displacement scaling: '{self.box_disp_scale.text}'. Using 1 instead.")
-                config.disp_scaling = 1.0
+            if self.box_disp_scale.text.strip().lower() == "auto":
+                config.disp_scaling = "auto"
+            else:
+                try:
+                    config.disp_scaling = float(self.box_disp_scale.text)
+                except ValueError:
+                    print(f"Invalid input for the displacement scaling: '{self.box_disp_scale.text}'. Using 'auto'.")
+                    config.disp_scaling = "auto"
 
         #The contour limits are shown rounded in the text boxes. They are only read if the user has changed the
         #text, so that ticking "specify contour limits" doesn't replace the exact limits by the rounded ones.
@@ -364,6 +401,14 @@ class Plot:
         self.read_widgets()
         config = self.config
         self.ax.cla()
+
+        #Replace "auto" by the displacement scaling it gives, and show it in the text box (with the events switched
+        #off, since changing the text otherwise triggers update() again)
+        if self.box_disp_scale is not None:
+            config.disp_scaling = calc_disp_scaling(config, self.mesh, self.solver_data)
+            self.box_disp_scale.eventson = False
+            self.box_disp_scale.set_val(f"{config.disp_scaling:g}")
+            self.box_disp_scale.eventson = True
 
         #====================================================================
         # Contour plot. The L2 stresses are only calculated once.
@@ -392,10 +437,13 @@ class Plot:
         else:
             x_nodes = self.mesh.nodes[:, 0]
             y_nodes = self.mesh.nodes[:, 1]
-        domain_scale = 20 / np.sqrt(self.mesh.get_nN())  #Smaller arrows when there are many nodes
+        self.legend_handles = []  #The arrows and boundary conditions add their symbols to the legend
         self.plot_nodes_and_labels(x_nodes, y_nodes)
-        self.plot_arrow_field(x_nodes, y_nodes, domain_scale)
+        self.plot_arrow_field(x_nodes, y_nodes)
         self.plot_bcs(x_nodes, y_nodes)
+        if len(self.legend_handles) > 0:  #The legend is placed above the plot, so that it doesn't cover anything
+            self.ax.legend(handles=self.legend_handles, loc="lower left", bbox_to_anchor=(0, 1.01), borderaxespad=0,
+                           ncol=min(len(self.legend_handles), 3))
 
         self.ax.set_xlabel(r"$x$")
         self.ax.set_ylabel(r"$y$")
@@ -447,7 +495,7 @@ class Plot:
                 text.set_fontsize(self.FONT_SIZE * scale)
 
         #Scatter plots take the marker size as an area (in points^2)
-        size = self.get_symbol_size()
+        size = self.get_symbol_size() * self.config.symbol_scale
         if self.node_markers is not None:
             self.node_markers.set_sizes([(0.5 * size)**2])
         for label in self.node_labels:
@@ -513,27 +561,55 @@ class Plot:
                                      va=vertical_alignment, zorder=20))
 
     def plot_bcs(self, x_nodes, y_nodes):
-        """Draws a symbol at each node with a boundary condition"""
+        """Draws a symbol at each node with a boundary condition (see BC_SYMBOLS), and adds them to the legend"""
         self.bc_markers = []  #Pairs of (markers, size relative to the symbol size), used in apply_sizes
         if not self.config.show_bcs:
             return
+
+        #Find the prescribed dofs of each node, and which symbols the nodes get
+        prescribed_dofs = {}
         for bc in self.config.bcs:
-            nodeIDs = self.mesh.node_sets[bc.node_set_name]
-            if bc.dof == Dof.W:
-                markers = self.ax.scatter(x_nodes[nodeIDs], y_nodes[nodeIDs], marker="o", color="magenta", zorder=9)
-                self.bc_markers.append((markers, 0.9))
-            else:
-                markers = self.ax.scatter(x_nodes[nodeIDs], y_nodes[nodeIDs], marker=BC_SYMBOLS[bc.dof],
-                                          facecolors="none", edgecolors="magenta", zorder=15)
-                self.bc_markers.append((markers, 2.8 if bc.dof in [Dof.U, Dof.V] else 2.0))
+            for I in self.mesh.node_sets[bc.node_set_name]:
+                prescribed_dofs.setdefault(I, set()).add(bc.dof)
+        nodes_with_symbol = {symbol_name: [] for symbol_name in BC_SYMBOLS}
+        for I, dofs in prescribed_dofs.items():
+            if Dof.U in dofs and Dof.V in dofs:
+                nodes_with_symbol["u and v"].append(I)
+            elif Dof.U in dofs:
+                nodes_with_symbol["u"].append(I)
+            elif Dof.V in dofs:
+                nodes_with_symbol["v"].append(I)
+            for dof, symbol_name in [(Dof.W, "w"), (Dof.THETAX, "theta_x"), (Dof.THETAY, "theta_y")]:
+                if dof in dofs:
+                    nodes_with_symbol[symbol_name].append(I)
+
+        for symbol_name, nodeIDs in nodes_with_symbol.items():
+            if len(nodeIDs) == 0:
+                continue
+            marker, relative_size, label = BC_SYMBOLS[symbol_name]
+            fill_color = "magenta" if symbol_name == "w" else "none"  #Only the dots for w are filled
+            markers = self.ax.scatter(x_nodes[nodeIDs], y_nodes[nodeIDs], marker=marker, facecolors=fill_color,
+                                      edgecolors="magenta", zorder=9 if symbol_name == "w" else 15)
+            self.bc_markers.append((markers, relative_size))
+            self.legend_handles.append(
+                mlines.Line2D([], [], marker=marker, markersize=12 * min(relative_size, 1.2), linestyle="None",
+                              markerfacecolor=fill_color, markeredgecolor="magenta", label=label))
+
+        #Make room for the symbols at the edges of the plot, so that they are not cut off. A symbol reaches half
+        #its size (the largest relative size is 2.8) from the node, which is converted to the units of the plot.
+        reach_on_screen = 0.5 * 2.8 * self.get_symbol_size() * self.config.symbol_scale
+        reach = reach_on_screen / self.get_screen_length_of_unit_length()
+        nodeIDs = list(prescribed_dofs.keys())
+        node_positions = np.column_stack([x_nodes[nodeIDs], y_nodes[nodeIDs]])
+        self.ax.update_datalim(np.vstack([node_positions - reach, node_positions + reach]))
 
     def get_symbol_size(self):
-        """The size (in points, 1/72 inch) of the nodes, labels and boundary condition symbols. It follows the distance
-        between the nodes on the screen, but is kept between a smallest and a largest size (which follow the window
-        size, like the fonts). The symbol size slider scales it."""
+        """The size (in points, 1/72 inch) that the nodes, labels, boundary condition symbols and arrows are based on,
+        before the size sliders are applied. It follows the distance between the nodes on the screen, but is kept
+        between a smallest and a largest size (which follow the window size, like the fonts)."""
         window_scale = self.fig.get_size_inches()[1] / self.DESIGN_HEIGHT
         node_spacing_on_screen = self.node_spacing * self.get_screen_length_of_unit_length()
-        return np.clip(0.35 * node_spacing_on_screen, 3 * window_scale, 12 * window_scale) * self.config.symbol_scale
+        return np.clip(0.35 * node_spacing_on_screen, 3 * window_scale, 12 * window_scale)
 
     def get_screen_length_of_unit_length(self):
         """The length on the screen (in points, 1/72 inch) of one unit of length in the plot"""
@@ -543,53 +619,45 @@ class Plot:
         x1 = self.ax.transData.transform((1, 0))[0]
         return (x1 - x0) * 72 / self.fig.dpi
 
-    def plot_arrow_field(self, x_nodes, y_nodes, domain_scale):
+    def plot_arrow_field(self, x_nodes, y_nodes):
         config = self.config
         if config.arrow_type == "none":
             return
-        assert config.problem_type == ProblemType.PLANE_STRESS, "Arrows are not implemented for plate problems"
         if config.arrow_type == "disp":
-            u, v = unpack_solution(config, self.solver_data.r)
-            self.plot_arrows(x_nodes, y_nodes, u, v, "disp", "blue", domain_scale, config.arrow_scale)
+            field_x, field_y = unpack_solution(config, self.solver_data.r)
+            color = "blue"
         elif config.arrow_type == "external forces":
-            Rx_ext, Ry_ext = unpack_solution(config, self.solver_data.R_ext)
-            self.plot_arrows(x_nodes, y_nodes, Rx_ext, Ry_ext, "external forces", "red", domain_scale,
-                             config.arrow_scale)
+            field_x, field_y = unpack_solution(config, self.solver_data.R_ext)
+            color = "red"
         elif config.arrow_type == "reaction forces":
-            Rx_rea, Ry_rea = unpack_solution(config, self.solver_data.R_int - self.solver_data.R_ext)
-            self.plot_arrows(x_nodes, y_nodes, Rx_rea, Ry_rea, "reaction forces", "green", domain_scale,
-                             config.arrow_scale)
+            field_x, field_y = unpack_solution(config, self.solver_data.R_int - self.solver_data.R_ext)
+            color = "green"
         else:
             raise ValueError(f"Unknown arrow type for plotting: {config.arrow_type}")
+        self.plot_arrows(x_nodes, y_nodes, field_x, field_y, config.arrow_type, color)
 
-    def plot_arrows(self, x, y, field_x, field_y, label, color, domain_scale, user_scale):
-        #only plot arrows with a non negligible magnitude
-        values_keep = np.where(np.sqrt(field_x**2 + field_y**2) > SMALL_VAL)[0]
-        if len(values_keep) == 0:  #Nothing to draw, e.g. no external forces, or NaN from a singular system
+    def plot_arrows(self, x, y, field_x, field_y, label, color):
+        """Draws the vectors (field_x, field_y) as arrows from the points (x, y). The longest arrow is 5 symbol sizes
+        long, but at least 25 points (times the arrow size slider). The other arrows are scaled in proportion to it."""
+        magnitude = np.sqrt(field_x**2 + field_y**2)
+        if not np.any(magnitude > 0):  #Nothing to draw, e.g. no external forces, or NaN from a singular system
             return
-        field_x_keep = field_x[values_keep]
-        field_y_keep = field_y[values_keep]
-        x_keep = x[values_keep]
-        y_keep = y[values_keep]
+        largest = np.max(magnitude[np.isfinite(magnitude)])
+        keep = magnitude > 1e-6 * largest  #Skip the arrows that are too small to see (e.g. round-off errors)
 
-        ARROW_LENGTH_SCALE = 0.05
-        ARROW_WIDTH_SCALE = 0.002
-        max_vector_norm = np.max(np.sqrt(field_x_keep**2 + field_y_keep**2))
-        self.ax.quiver(
-            x_keep,
-            y_keep,
-            ARROW_LENGTH_SCALE * user_scale * field_x_keep / max_vector_norm,
-            ARROW_LENGTH_SCALE * user_scale * field_y_keep / max_vector_norm,
-            color=color,
-            scale=1,  #this scale thing is weird, increasing it makes arrows smaller
-            width=ARROW_WIDTH_SCALE * domain_scale)
+        window_scale = self.fig.get_size_inches()[1] / self.DESIGN_HEIGHT
+        longest_arrow_on_screen = max(5 * self.get_symbol_size(), 25 * window_scale) * self.config.arrow_scale
+        #The arrows are given in the units of the plot, so the length on the screen is converted to those units
+        longest_arrow = longest_arrow_on_screen / self.get_screen_length_of_unit_length()
+        arrow_x = field_x[keep] * longest_arrow / largest
+        arrow_y = field_y[keep] * longest_arrow / largest
+        self.ax.quiver(x[keep], y[keep], arrow_x, arrow_y, color=color, zorder=16,  #On top of the support symbols
+                       angles="xy", scale_units="xy", scale=1, units="xy", width=0.05 * longest_arrow)
+        #Make room for arrows that point out of the plot
+        self.ax.update_datalim(np.column_stack([x[keep] + arrow_x, y[keep] + arrow_y]))
 
-        # Create a proxy handle for the legend
-        arrow_proxy = mlines.Line2D([], [],
-                                    color=color,
-                                    marker=r'$\rightarrow$',
-                                    linestyle='None',
-                                    markersize=10,
-                                    label=label)
-        self.ax.legend(handles=[arrow_proxy])
+        #The arrows are scaled, so the legend shows the size of the largest one
+        self.legend_handles.append(
+            mlines.Line2D([], [], color=color, marker=r'$\rightarrow$', linestyle='None', markersize=10,
+                          label=f"{label} (largest: {largest:.2e})"))
 

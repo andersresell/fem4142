@@ -6,15 +6,15 @@ if __name__ == "__main__":
     nu = 0.3  # Poisson's ratio
     h = 1  # Plate thickness in m
     Lx = 10  #Length in x-direction
-    Ly = Lx / 10  #Length in y-direction
+    Ly = Lx / 8  #Length in y-direction
     q = 1000  #Line load applied to the top edge
     element_type = ElementType.Q4  #Use quadrilateral element
     problem_type = ProblemType.PLANE_STRESS  #Specify that a plane stress problem is solved
-    nEx = 10  #Number of elements in x-direction
-    nEy = 1  #Number of elements in y-direction
+    nEx = 20  #Number of elements in x-direction
+    nEy = 3  #Number of elements in y-direction
 
     p0 = q / h  #Equivalent pressure load for plane stress problem
-    perturb_mesh_nodes_factor = 0
+    perturb_mesh_nodes_factor = 1
 
     #====================================================================
     # Group problem settings in an object called config
