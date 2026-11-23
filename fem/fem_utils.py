@@ -79,6 +79,12 @@ def get_dof_id(dof, problem_type):
     return dof_id
 
 
+def has_hourglass_stiffness(element_type, problem_type):
+    """True if the element has hourglass stabilization: An extra stiffness against the spurious zero energy modes
+    from reduced integration (see calc_Ke_hourglass). For now, only Q4R in plane stress has it."""
+    return element_type == ElementType.Q4R and problem_type == ProblemType.PLANE_STRESS
+
+
 #====================================================================
 # Element traits
 #====================================================================

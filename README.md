@@ -9,18 +9,15 @@
 - Zero or prescribed displacement boundary conditions
 - Simple GUI (see images below)
 
-![](fem-node-labels.png)  
-*The current problem has a linearly varying pressure load p(x) = (1 - x/Lx)p_0 applied to the top edge.  
+![](images/fem-stress.png)  
+*The current problem has a linearly varying pressure load $p(x) = p_0 (1 - x/L_x)$ applied to the top edge.  
 The arrows shown are the external nodal forces arising from consistent load integration of this pressure.  
-The brown features on the left edge mark the fixed boundary condition.*
-
-![](fem-stress.png)  
-*Von Mises stress (no nodal averaging) computed for each element. Reaction forces that counteract the external forces are also displayed.  
-Note that this mesh is finer than the mesh shown above.*
+The magenta symbols on the left edge mark the boundary conditions.  
+The contours show the von Mises stress (no nodal averaging), computed for each element.*
 
 ---
 
-The following script was used to specify the displayed problem:
+The following script (`beam_example.py`) was used to specify the displayed problem:
 
 ```python
 from fem.useful_imports import *  #import required functions
@@ -75,15 +72,16 @@ if __name__ == "__main__":
     # the load is given as q(x) = -(p0*h) * (1 - x / Lx) is given as:
     # v(x) = -(p0*h) / (E*I) * (x^4 / 24 - x^5 / (120*Lx) - Lx / 12 * x^3 + Lx^2 / 12 * x^2)
     #====================================================================
-    #Fetch the individual displacement components from the generalized displacement vector r 
-    u, v = unpack_solution(config, solver_data.r) 
-    nodeIDs_top = mesh.node_sets["north"] #The node indices of the node set "north"
-    x_top = mesh.nodes[nodeIDs_top, 0] #Get the x-coordinates along the top edge
+    #Fetch the individual displacement components from the generalized displacement vector r
+    u, v = unpack_solution(config, solver_data.r)
+    nodeIDs_top = mesh.node_sets["north"]  #The node indices of the node set "north"
+    x_top = mesh.nodes[nodeIDs_top, 0]  #Get the x-coordinates along the top edge
     # Sort the nodes along the top edge according to their x-coordinate
     # since the nodes in the mesh are not necessarily ordered in the x-direction.
     nodeIDs_top_ordered = nodeIDs_top[np.argsort(x_top)]
-    x_top_ordered = mesh.nodes[nodeIDs_top_ordered, 0] #Take out the x coordinates along the top so that they are ordered
-    v_top_ordered = v[nodeIDs_top_ordered] #Take out the lateral displacements v_top_ordered the same way as x_top_ordered 
+    #Take out the x-coordinates and the lateral displacements along the top edge, in the same order
+    x_top_ordered = mesh.nodes[nodeIDs_top_ordered, 0]
+    v_top_ordered = v[nodeIDs_top_ordered]
     I = Ly**3 * h / 12  #Second moment of inertia for a rectangular cross-section
     v_theory = -(p0 * h) / (E * I) * (x_top_ordered**4 / 24 - x_top_ordered**5 /
                                       (120 * Lx) - Lx / 12 * x_top_ordered**3 + Lx**2 / 12 * x_top_ordered**2)
@@ -102,19 +100,27 @@ if __name__ == "__main__":
     Plot(config, mesh, solver_data)
 ```
 
-![](beam-comparison.png)  
-*Comparison against beam theory for the current case. The reason that the curves don't match better is that the length to thickness ratio of the beam (Lx/Ly=10/1.5 = 6.67 < 10) is too low.
+![](images/beam-comparison.png)  
+*Comparison against beam theory for the current case. The reason that the curves don't match better is that the length to thickness ratio of the beam (Lx/Ly=10/1.5 = 6.67 < 10) is too low for Euler Bernoulli theory to match perfectly.
 If we lower Ly from 1.5 to 0.5, the relative tip error is reduced from 2.98% to 0.14%.*
 
 
 ## Usage
 
-Make sure you have Python 3.9+ with **numpy**, **matplotlib**, and **scipy** installed.
-
-To test the program, clone the project, navigate to the project root directory and run:
+You need Python 3.10 or newer with **numpy**, **scipy** and **matplotlib**. With Anaconda, these are already
+installed. Otherwise, install them with
 
 ```bash
-python main.py
+pip install numpy scipy matplotlib
 ```
 
-No installation is currently supported.
+(On Linux, the plot window may also need tkinter, e.g. `sudo apt install python3-tk`.)
+
+Then download the project, either with `git clone https://github.com/andersresell/fem4142.git` or as a ZIP file
+from GitHub, and run the example from the project folder:
+
+```bash
+python beam_example.py
+```
+
+More examples are found in the folder `examples`.

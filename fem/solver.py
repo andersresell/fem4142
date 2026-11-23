@@ -22,18 +22,18 @@ def calc_Ke(config: Config, mesh: Mesh, e, calc_hourglass_stiffness_only=False):
                 Ke = element_stiffness_user.calc_Ke_plane_stress_user_Q4(config, mesh, e)
             else:
                 Ke = element_stiffness.calc_Ke_plane_stress(config, mesh, e)
-                if config.element_type == ElementType.Q4R:
-                    Ke += element_stiffness.calc_Ke_hourglass_plane_stress_Q4R(config, mesh, e)
         else:
             assert config.problem_type == ProblemType.PLATE
             Ke = element_stiffness.calc_Ke_mindlin_plate(config, mesh, e)
+        if has_hourglass_stiffness(config.element_type, config.problem_type):
+            Ke += element_stiffness.calc_Ke_hourglass(config, mesh, e)
     else:
         #====================================================================
         # This case is used when we only want to assemble the hourglass
         # stiffness part of the stiffness matrix (for artificial energy check)
         #====================================================================
-        if config.problem_type == ProblemType.PLANE_STRESS and config.element_type == ElementType.Q4R:
-            Ke = element_stiffness.calc_Ke_hourglass_plane_stress_Q4R(config, mesh, e)
+        if has_hourglass_stiffness(config.element_type, config.problem_type):
+            Ke = element_stiffness.calc_Ke_hourglass(config, mesh, e)
         else:
             nNl = ELEMENT_TRAITS[config.element_type].nNl
             NUM_DOFS = get_num_dofs_from_problem_type(config.problem_type)
@@ -103,6 +103,16 @@ def solve_linear_system(A, b):
     return r
 
 
+def calc_hourglass_energy(config: Config, mesh: Mesh, solver_data: SolverData):
+    """Returns the strain energy in the hourglass stiffness U_hg and the total strain energy U, after solve().
+    U_hg / U is the part of the energy that is artificial. (U_hg = 0 without hourglass stiffness,
+    see has_hourglass_stiffness.)"""
+    K_hg = assemble_stiffness_matrix(mesh, config, solver_data, calc_hourglass_stiffness_only=True)
+    U_hg = 0.5 * solver_data.r.T @ K_hg @ solver_data.r
+    U = 0.5 * solver_data.r.T @ solver_data.K @ solver_data.r
+    return U_hg, U
+
+
 def solve(config: Config, solver_data: SolverData, mesh: Mesh):
     """Assembles the stiffness matrix, applies boundary conditions, and solves the system K*r = R."""
 
@@ -121,14 +131,12 @@ def solve(config: Config, solver_data: SolverData, mesh: Mesh):
 
     solver_data.R_int = solver_data.K @ solver_data.r  #Calculate internal forces
 
-    if config.element_type == ElementType.Q4R and config.problem_type == ProblemType.PLANE_STRESS:
+    if has_hourglass_stiffness(config.element_type, config.problem_type):
         #====================================================================
         # Check the artificial hourglass energy
         #====================================================================
-        K_hg = assemble_stiffness_matrix(mesh, config, solver_data, calc_hourglass_stiffness_only=True)
-        U_hg = 0.5 * solver_data.r.T @ K_hg @ solver_data.r
-        U = 0.5 * solver_data.r.T @ solver_data.K @ solver_data.r
-        print(f"Hourglass energy: U_hg = {U_hg:.3e}, U = {U:.3e}, artficial energy percentage: {U_hg / U * 100:.2f} %")
+        U_hg, U = calc_hourglass_energy(config, mesh, solver_data)
+        print(f"Artificial hourglass energy percentage: {U_hg / U * 100:.2f} %")
 
     elapsed_time = (time.time() - start_time)
     print(f"Solver (assembly and system solution) completed in {elapsed_time:.2f} seconds")

@@ -4,48 +4,36 @@ if __name__ == "__main__":
 
     E = 210e9  # Young's modulus in Pa
     nu = 0.3  # Poisson's ratio
-    h = 1  # Plate thickness in m
-    Lx = 10  #Length in x-direction
-    Ly = Lx / 8  #Length in y-direction
-    q = 1000  #Line load applied to the top edge
-    element_type = ElementType.Q4  #Use quadrilateral element
+    h = 0.01  # Plate thickness in m
+    Lx = 10.0  #Length in x-direction
+    Ly = 1.5  #Length in y-direction
+    p0 = 1000000  #Pressure applied to the top edge
+    element_type = ElementType.Q16  #Use 16 node quadrilateral element
     problem_type = ProblemType.PLANE_STRESS  #Specify that a plane stress problem is solved
-    nEx = 200  #Number of elements in x-direction
-    nEy = 10  #Number of elements in y-direction
-
-    p0 = q / h  #Equivalent pressure load for plane stress problem
-    perturb_mesh_nodes_factor = 1
+    nEx = 15  #Number of elements in x-direction
+    nEy = 2  #Number of elements in y-direction
 
     #====================================================================
     # Group problem settings in an object called config
     #====================================================================
     config = create_config(E, nu, h, element_type, problem_type)
-    config.hourglass_scaling = 0.1
 
     #====================================================================
     # Create a rectangular structured mesh
     #====================================================================
-    mesh = create_structured_quad_mesh(config, Lx, Ly, nEx, nEy, perturb_mesh_nodes_factor)
-
-    H = 0.3 * Lx
-    morph_mesh_to_quadrilateral(mesh, corners=[(0, 0), (Lx, H), (Lx, Ly + H), (0, Ly)])
+    mesh = create_structured_quad_mesh(config, Lx, Ly, nEx, nEy)
 
     #====================================================================
     # Add fixed boundary condition  to the left edge called "west"
     #====================================================================
-    add_boundary_condition(config, mesh, "west", Dof.U, 0)
-    add_boundary_condition(config, mesh, "south_west", Dof.V, 0)
+    add_boundary_condition(config, mesh, "west", Dof.U, 0)  #set u to 0
+    add_boundary_condition(config, mesh, "west", Dof.V, 0)  #set v to 0
 
-    # add_boundary_condition(config, mesh, "east", Dof.U, 0)
-    # add_boundary_condition(config, mesh, "east", Dof.V, 1)
     #====================================================================
-    # Assign a uniform pressure load on the top edge named "north"
+    # Assign a linearly varying load on the top edge named "north"
     #====================================================================
-    load_func = lambda x, y: p0
+    load_func = lambda x, y: p0 * (1 - x / Lx)
     add_load(config, mesh, "north", LoadType.PRESSURE, load_func)
-
-    # load_func = lambda x, y: (0, -p0)
-    # add_load(config, mesh, "east", LoadType.TRACTION, load_func)
 
     #====================================================================
     # Create objects holding system matrices and vectors. Then assemble
@@ -69,14 +57,12 @@ if __name__ == "__main__":
     # Sort the nodes along the top edge according to their x-coordinate
     # since the nodes in the mesh are not necessarily ordered in the x-direction.
     nodeIDs_top_ordered = nodeIDs_top[np.argsort(x_top)]
-    x_top_ordered = mesh.nodes[nodeIDs_top_ordered,
-                               0]  #Take out the x coordinates along the top so that they are ordered
-    v_top_ordered = v[
-        nodeIDs_top_ordered]  #Take out the lateral displacements v_top_ordered the same way as x_top_ordered
+    #Take out the x-coordinates and the lateral displacements along the top edge, in the same order
+    x_top_ordered = mesh.nodes[nodeIDs_top_ordered, 0]
+    v_top_ordered = v[nodeIDs_top_ordered]
     I = Ly**3 * h / 12  #Second moment of inertia for a rectangular cross-section
-    # v_theory = -(p0 * h) / (E * I) * (x_top_ordered**4 / 24 - x_top_ordered**5 /
-    #                                   (120 * Lx) - Lx / 12 * x_top_ordered**3 + Lx**2 / 12 * x_top_ordered**2)
-    v_theory = -q / (24 * E * I) * x_top_ordered**2 * (x_top_ordered**2 - 4 * Lx * x_top_ordered + 6 * Lx**2)
+    v_theory = -(p0 * h) / (E * I) * (x_top_ordered**4 / 24 - x_top_ordered**5 /
+                                      (120 * Lx) - Lx / 12 * x_top_ordered**3 + Lx**2 / 12 * x_top_ordered**2)
 
     plt.plot(x_top_ordered, v_top_ordered, label="Lateral displacement at top edge")
     plt.plot(x_top_ordered, v_theory, label="Beam theory solution", linestyle='--')
@@ -85,10 +71,6 @@ if __name__ == "__main__":
     plt.legend()
     plt.title("Lateral displacement along the top edge")
     plt.tight_layout()
-    print("v tip:", v_top_ordered[-1])
-    print("v theory:", v_theory[-1])
-    err_percent = abs((v_top_ordered[-1] - v_theory[-1]) / (v_theory[-1])) * 100
-    print(f"Error: {err_percent:.5f}%")
 
     #====================================================================
     # Start the GUI to visualize the results

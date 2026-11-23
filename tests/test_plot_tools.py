@@ -256,8 +256,8 @@ def test_nodes_and_element_edges_can_be_hidden_separately():
     config.show_nodes = False
     plot = plot_tools.Plot(config, mesh, solver_data)
     assert plot.node_markers is None
-    plot.check_buttons.set_active(1)  #Tick "show nodes"
-    plot.check_buttons.set_active(2)  #Untick "show element edges"
+    plot.check_buttons.set_active(1)  #Tick "nodes"
+    plot.check_buttons.set_active(2)  #Untick "element edges"
     assert plot.node_markers is not None
     assert not config.show_element_edges
 

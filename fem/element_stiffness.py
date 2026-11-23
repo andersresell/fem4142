@@ -73,6 +73,12 @@ def calc_Ke_plane_stress(config: Config, mesh: Mesh, e):
     return Ke
 
 
+def calc_Ke_hourglass(config: Config, mesh: Mesh, e):
+    """The hourglass stiffness of element e, for the elements that have it (see has_hourglass_stiffness)"""
+    assert has_hourglass_stiffness(config.element_type, config.problem_type)
+    return calc_Ke_hourglass_plane_stress_Q4R(config, mesh, e)  #Q4R in plane stress is the only one for now
+
+
 def calc_Ke_hourglass_plane_stress_Q4R(config: Config, mesh: Mesh, e):
     assert config.element_type == ElementType.Q4R
     #====================================================================

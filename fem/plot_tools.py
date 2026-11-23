@@ -257,6 +257,12 @@ def format_contour_limit(value):
     return f"{value:.3e}"
 
 
+def show_text_in_box(text_box, text):
+    """Changes the text that a text box shows. (TextBox.set_val would also trigger update() again, show the cursor as
+    if the user was typing, and redraw the whole window.)"""
+    text_box.text_disp.set_text(text)
+
+
 def maximize_window(fig):
     """Makes the window fill the screen. How this is done depends on the GUI toolkit that matplotlib uses,
     so we try the common ones, and keep the window as it is if none of them works."""
@@ -353,7 +359,7 @@ class Plot:
 
         self.check_buttons = CheckButtons(
             get_widget_axes(0.03, 0.2, 0.08),
-            ["show labels", "show nodes", "show element edges", "show boundary conditions"],
+            ["labels", "nodes", "element edges", "boundary conditions"],
             [config.show_labels, config.show_nodes, config.show_element_edges, config.show_bcs])
         self.check_buttons.ax.set_title("Show:")
 
@@ -440,13 +446,10 @@ class Plot:
         config = self.config
         self.ax.cla()
 
-        #Replace "auto" by the displacement scaling it gives, and show it in the text box (with the events switched
-        #off, since changing the text otherwise triggers update() again)
+        #Replace "auto" by the displacement scaling it gives, and show it in the text box
         if self.box_disp_scale is not None:
             config.disp_scaling = calc_disp_scaling(config, self.mesh, self.solver_data)
-            self.box_disp_scale.eventson = False
-            self.box_disp_scale.set_val(f"{config.disp_scaling:g}")
-            self.box_disp_scale.eventson = True
+            show_text_in_box(self.box_disp_scale, f"{config.disp_scaling:g}")
 
         #====================================================================
         # Contour plot. The L2 stresses are only calculated once.
@@ -484,7 +487,7 @@ class Plot:
         self.plot_bcs(x_nodes, y_nodes)
         if len(self.legend_handles) > 0:  #The legend is placed above the plot, so that it doesn't cover anything
             self.ax.legend(handles=self.legend_handles, loc="lower left", bbox_to_anchor=(0, 1.01), borderaxespad=0,
-                           ncol=min(len(self.legend_handles), 3))
+                           ncol=min(len(self.legend_handles), 2))
 
         self.ax.set_xlabel(r"$x$")
         self.ax.set_ylabel(r"$y$")
@@ -501,13 +504,10 @@ class Plot:
         if config.specify_contour_limits:
             contours.set_clim(config.contour_min, config.contour_max)
         else:
-            #Remember the limits, and show them in the text boxes. The events must be switched off while doing this,
-            #since changing the text otherwise triggers update(), which would draw the whole plot again.
+            #Remember the limits, and show them in the text boxes
             config.contour_min, config.contour_max = contours.get_clim()
-            for text_box, value in [(self.box_contour_min, config.contour_min), (self.box_contour_max, config.contour_max)]:
-                text_box.eventson = False
-                text_box.set_val(format_contour_limit(value))
-                text_box.eventson = True
+            show_text_in_box(self.box_contour_min, format_contour_limit(config.contour_min))
+            show_text_in_box(self.box_contour_max, format_contour_limit(config.contour_max))
 
         if self.cbar is None:
             self.cbar = self.fig.colorbar(contours, ax=self.ax)
