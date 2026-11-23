@@ -10,8 +10,8 @@ if __name__ == "__main__":
     q = 1000  #Line load applied to the top edge
     element_type = ElementType.Q4  #Use quadrilateral element
     problem_type = ProblemType.PLANE_STRESS  #Specify that a plane stress problem is solved
-    nEx = 20  #Number of elements in x-direction
-    nEy = 3  #Number of elements in y-direction
+    nEx = 200  #Number of elements in x-direction
+    nEy = 10  #Number of elements in y-direction
 
     p0 = q / h  #Equivalent pressure load for plane stress problem
     perturb_mesh_nodes_factor = 1
