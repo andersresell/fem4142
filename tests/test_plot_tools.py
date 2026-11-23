@@ -140,6 +140,15 @@ def test_gui_calculates_the_L2_stresses_only_once(monkeypatch):
     assert len(calls) == 1
 
 
+def test_stress_recovery_is_greyed_out_for_displacements():
+    config, mesh, solver_data = solved_plane_stress_problem()
+    config.contour = "u"
+    plot = plot_tools.Plot(config, mesh, solver_data)
+    assert plot.radio_recovery.labels[0].get_color() == "lightgrey"
+    plot.radio_contour.set_active(plot.field_names.index("sigma_xx"))  #Clicking a stress redraws the plot
+    assert plot.radio_recovery.labels[0].get_color() == "black"
+
+
 def test_fonts_scale_with_the_window_height():
     config, mesh, solver_data = solved_plane_stress_problem()
     plot = plot_tools.Plot(config, mesh, solver_data)

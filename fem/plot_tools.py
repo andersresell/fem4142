@@ -325,6 +325,11 @@ class Plot:
         contours = plot_field(self.ax, config, self.mesh, self.solver_data, config.contour, self.nodal_stress_L2)
         self.update_contour_limits_and_colorbar(contours)
 
+        #The stress recovery only matters for stresses, so it is greyed out when another field is shown
+        recovery_color = "black" if is_stress_field(config.contour) else "lightgrey"
+        for text in list(self.radio_recovery.labels) + [self.radio_recovery.ax.title]:
+            text.set_color(recovery_color)
+
         #====================================================================
         # Nodes, arrows and boundary conditions
         #====================================================================
