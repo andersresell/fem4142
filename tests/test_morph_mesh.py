@@ -1,4 +1,4 @@
-"""Checks of morph_mesh, which moves the nodes of a rectangular mesh into another shape."""
+"""Checks of the morph_mesh_to_... functions, which move the nodes of a rectangular mesh into another shape."""
 import pytest
 
 import fem.shape_functions as shape_functions
@@ -7,7 +7,7 @@ from fem.useful_imports import *
 
 def make_mesh(element_type=ElementType.Q16, nE=4):
     config = create_config(1.0, 0.3, 1.0, element_type, ProblemType.PLANE_STRESS)
-    return create_structured_quad_mesh(config, 3.0, 2.0, nE, nE)  #The size doesn't matter, morph_mesh rescales it
+    return create_structured_quad_mesh(config, 3.0, 2.0, nE, nE)  #The size doesn't matter, the morphing rescales it
 
 
 def mesh_area(mesh, element_type):
@@ -32,7 +32,7 @@ def distance_from_origin(mesh, node_set_name):
 def test_quarter_circle():
     R = 2.0
     mesh = make_mesh()
-    morph_mesh(mesh, "quarter_circle", radius=R)
+    morph_mesh_to_quarter_circle(mesh, radius=R)
     x, y = mesh.nodes[:, 0], mesh.nodes[:, 1]
     assert np.allclose(y[mesh.node_sets["south"]], 0.0) and np.allclose(x[mesh.node_sets["west"]], 0.0)
     assert np.allclose(distance_from_origin(mesh, "east"), R) and np.allclose(distance_from_origin(mesh, "north"), R)
@@ -41,7 +41,7 @@ def test_quarter_circle():
 
 def test_quarter_annulus():
     mesh = make_mesh()
-    morph_mesh(mesh, "quarter_annulus", radius=2.0, inner_radius=1.0)
+    morph_mesh_to_quarter_annulus(mesh, inner_radius=1.0, outer_radius=2.0)
     x, y = mesh.nodes[:, 0], mesh.nodes[:, 1]
     assert np.allclose(distance_from_origin(mesh, "west"), 1.0) and np.allclose(distance_from_origin(mesh, "east"), 2.0)
     assert np.allclose(y[mesh.node_sets["south"]], 0.0) and np.allclose(x[mesh.node_sets["north"]], 0.0)
@@ -51,10 +51,17 @@ def test_quarter_annulus():
 def test_quadrilateral():
     corners = [(0.0, 0.0), (4.0, 0.0), (3.0, 2.0), (1.0, 3.0)]
     mesh = make_mesh(ElementType.Q4)
-    morph_mesh(mesh, "quadrilateral", corners=corners)
+    morph_mesh_to_quadrilateral(mesh, corners)
     for corner_name, corner in zip(["south_west", "south_east", "north_east", "north_west"], corners):
         assert np.allclose(mesh.nodes[mesh.node_sets[corner_name][0]], corner)
     assert mesh_area(mesh, ElementType.Q4) == pytest.approx(7.5)  #Area of the quadrilateral
+
+
+def test_quadrilateral_without_corners_gives_the_unit_square():
+    mesh = make_mesh(ElementType.Q4)
+    morph_mesh_to_quadrilateral(mesh)
+    assert np.min(mesh.nodes) == pytest.approx(0.0) and np.max(mesh.nodes) == pytest.approx(1.0)
+    assert mesh_area(mesh, ElementType.Q4) == pytest.approx(1.0)
 
 
 def test_simply_supported_circular_plate_matches_kirchhoff_theory():
@@ -62,7 +69,7 @@ def test_simply_supported_circular_plate_matches_kirchhoff_theory():
     R, h, E, nu, q = 1.0, 0.01, 200e9, 0.3, 1000.0
     config = create_config(E, nu, h, ElementType.Q16, ProblemType.PLATE)
     mesh = create_structured_quad_mesh(config, R, R, 4, 4)
-    morph_mesh(mesh, "quarter_circle", radius=R)
+    morph_mesh_to_quarter_circle(mesh, radius=R)
     add_boundary_condition(config, mesh, "west", Dof.THETAY, 0)
     add_boundary_condition(config, mesh, "south", Dof.THETAX, 0)
     add_boundary_condition(config, mesh, "east", Dof.W, 0)
@@ -79,15 +86,15 @@ def test_simply_supported_circular_plate_matches_kirchhoff_theory():
 
 
 @pytest.mark.parametrize(
-    "morph_type, parameters",
+    "morph_function, parameters",
     [
-        ("circle", {}),
-        ("quarter_annulus", dict(radius=1.0, inner_radius=1.0)),
-        ("quadrilateral", {}),
-        ("quadrilateral", dict(corners=[(0, 0), (0, 1), (1, 1), (1, 0)])),
-        ("quadrilateral", dict(corners=[(0, 0), (2, 0), (0.5, 0.5), (0, 2)])),
+        (morph_mesh_to_quarter_circle, dict(radius=0.0)),
+        (morph_mesh_to_quarter_annulus, dict(inner_radius=1.0, outer_radius=1.0)),
+        (morph_mesh_to_quadrilateral, dict(corners=[(0, 0), (1, 0), (1, 1)])),
+        (morph_mesh_to_quadrilateral, dict(corners=[(0, 0), (0, 1), (1, 1), (1, 0)])),
+        (morph_mesh_to_quadrilateral, dict(corners=[(0, 0), (2, 0), (0.5, 0.5), (0, 2)])),
     ],
-    ids=["unknown morph type", "inner radius too large", "no corners", "clockwise corners", "not convex"])
-def test_invalid_morph_input_raises_an_error(morph_type, parameters):
+    ids=["zero radius", "inner radius too large", "three corners", "clockwise corners", "not convex"])
+def test_invalid_morph_input_raises_an_error(morph_function, parameters):
     with pytest.raises(ValueError):
-        morph_mesh(make_mesh(ElementType.Q4), morph_type, **parameters)
+        morph_function(make_mesh(ElementType.Q4), **parameters)

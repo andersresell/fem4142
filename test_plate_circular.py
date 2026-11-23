@@ -30,7 +30,7 @@ if __name__ == "__main__":
             h = R / tr
             config = create_config(E, nu, h, element_type, problem_type)
             mesh = create_structured_quad_mesh(config, Lx, Ly, nEx, nEy)
-            morph_mesh(mesh, "quarter_circle")
+            morph_mesh_to_quarter_circle(mesh)
 
             #model one quartrer of the plate
             add_boundary_condition(config, mesh, "west", Dof.THETAY, 0)

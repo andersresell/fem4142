@@ -13,7 +13,7 @@ Progress tracker for the handover clean-up. Can be deleted when we're done.
 - [x] IntEnum constants (`ElementType.Q16`, ...)
 - [x] Dataclasses for Config, Mesh, SolverData, ...
 - [x] One `ELEMENT_TRAITS` dict built once (including `il_to_ij`), replacing the parallel dicts in `fem_utils.py`
-- [x] `morph_mesh` with named presets: `quarter_circle`, `quarter_annulus`, `quadrilateral`. Unknown name gives an error
+- [x] Mesh morphing, one function per shape: `morph_mesh_to_quarter_circle`, `morph_mesh_to_quarter_annulus`, `morph_mesh_to_quadrilateral`
 
 ## Step 3: Stress recovery
 - [ ] Consistent and L2 (consistent mass) recovery as post-processing functions, not stored in solver_data

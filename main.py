@@ -27,6 +27,8 @@ if __name__ == "__main__":
     #====================================================================
     mesh = create_structured_quad_mesh(config, Lx, Ly, nEx, nEy, perturb_mesh_nodes_factor)
 
+    morph_mesh_to_quadrilateral(mesh, corners=[(0, 0), (2, 0), (2, 2), (0, 1)])
+
     #====================================================================
     # Add fixed boundary condition  to the left edge called "west"
     #====================================================================
