@@ -3,7 +3,6 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))  #Lets Python find the fem folder
 from fem.useful_imports import *  #import required functions
-import fem.stress_recovery as stress_recovery
 
 #====================================================================
 # A circular plate under uniform pressure, compared with Kirchhoff

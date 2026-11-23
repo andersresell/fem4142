@@ -123,6 +123,7 @@ def solve(config: Config, solver_data: SolverData, mesh: Mesh):
 
     solver_data.K = assemble_stiffness_matrix(mesh, config, solver_data)
 
+    solver_data.R_ext[:] = 0  #Start from zero, so the loads aren't added twice if solve() is called again
     loads.assemble_loads_consistent(config, mesh, solver_data)
 
     bcs.assign_boundary_conditions(config, mesh, solver_data)

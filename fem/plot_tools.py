@@ -182,7 +182,7 @@ def calc_disp_scaling(config: Config, mesh: Mesh, solver_data: SolverData):
 def plot_field(ax, config: Config, mesh: Mesh, solver_data: SolverData, field, nodal_stress_L2=None):
     """Draws a field (e.g. "u_mag" or "sigma_xx", see get_field_names) as a contour plot on the mesh, in the
     matplotlib axes ax. For plane stress, the mesh is deformed by the displacements times config.disp_scaling
-    (see calc_disp_scaling).
+    (see calc_disp_scaling), unless config.show_deformed is False.
     Stresses are calculated with config.stress_recovery ("consistent" or "L2"). The element edges are drawn if
     config.show_element_edges is True. Returns the contour plot, which can be used to add a colorbar. Example:
 
@@ -212,13 +212,14 @@ def plot_field(ax, config: Config, mesh: Mesh, solver_data: SolverData, field, n
     values = np.zeros_like(x)
     NUM_DOFS = get_num_dofs_from_problem_type(config.problem_type)
     r = solver_data.r.reshape(-1, NUM_DOFS)  #One row per node
-    if config.problem_type == ProblemType.PLANE_STRESS:
+    deformed = config.problem_type == ProblemType.PLANE_STRESS and config.show_deformed
+    if deformed:
         disp_scaling = calc_disp_scaling(config, mesh, solver_data)
     for e in range(nE):
         nodeIDs = mesh.elements[e, :]
         x[e] = N @ mesh.nodes[nodeIDs, 0]
         y[e] = N @ mesh.nodes[nodeIDs, 1]
-        if config.problem_type == ProblemType.PLANE_STRESS:  #Show the deformed shape
+        if deformed:
             x[e] += disp_scaling * (N @ r[nodeIDs, 0])
             y[e] += disp_scaling * (N @ r[nodeIDs, 1])
         values[e] = calc_field_in_element(config, mesh, solver_data, field, e, N, dNdxi, dNdeta, nodal_stress_L2)
@@ -393,13 +394,18 @@ class Plot:
                                              active=arrow_options.index(config.arrow_type))
             self.radio_arrows.ax.set_title("Arrows:")
 
-        self.check_buttons = CheckButtons(
-            get_widget_axes(0.03, 0.2, 0.08), ["labels", "nodes", "element edges", "boundary conditions"],
-            [config.show_labels, config.show_nodes, config.show_element_edges, config.show_bcs])
+        show_options = ["labels", "nodes", "element edges", "boundary conditions"]
+        show_status = [config.show_labels, config.show_nodes, config.show_element_edges, config.show_bcs]
+        if config.problem_type == ProblemType.PLANE_STRESS:  #Plates are drawn undeformed
+            show_options.append("deformed shape")
+            show_status.append(config.show_deformed)
+        self.check_buttons = CheckButtons(get_widget_axes(0.03, 0.2, 0.02 * len(show_options)), show_options,
+                                          show_status)
         self.check_buttons.ax.set_title("Show:")
 
+        #The disp scale box is only shown when "deformed shape" is ticked (see update)
         self.box_disp_scale = None
-        if config.problem_type == ProblemType.PLANE_STRESS:  #Plates are drawn undeformed
+        if config.problem_type == ProblemType.PLANE_STRESS:
             self.box_disp_scale = TextBox(get_widget_axes(0.13, 0.08, 0.03), "disp scale ", initial=config.disp_scaling)
 
         #The contour limit boxes are only shown when "specify contour limits" is ticked (see update)
@@ -459,8 +465,10 @@ class Plot:
         config.stress_recovery = self.radio_recovery.value_selected
         if self.radio_arrows is not None:
             config.arrow_type = self.radio_arrows.value_selected
-        config.show_labels, config.show_nodes, config.show_element_edges, config.show_bcs = \
-            self.check_buttons.get_status()
+        show_status = self.check_buttons.get_status()
+        config.show_labels, config.show_nodes, config.show_element_edges, config.show_bcs = show_status[:4]
+        if config.problem_type == ProblemType.PLANE_STRESS:
+            config.show_deformed = show_status[4]
         config.specify_contour_limits = self.check_specify_limits.get_status()[0]
         config.symbol_scale = self.slider_symbol_scale.val
         if self.slider_arrow_scale is not None:
@@ -494,6 +502,7 @@ class Plot:
         if self.box_disp_scale is not None:
             config.disp_scaling = calc_disp_scaling(config, self.mesh, self.solver_data)
             show_text_in_box(self.box_disp_scale, f"{config.disp_scaling:g}")
+            self.box_disp_scale.ax.set_visible(config.show_deformed)
 
         #====================================================================
         # Contour plot. The L2 stresses are only calculated once.
@@ -518,7 +527,7 @@ class Plot:
         #====================================================================
         # Nodes, arrows and boundary conditions
         #====================================================================
-        if config.problem_type == ProblemType.PLANE_STRESS:
+        if config.problem_type == ProblemType.PLANE_STRESS and config.show_deformed:
             u, v = unpack_solution(config, self.solver_data.r)
             x_nodes = self.mesh.nodes[:, 0] + config.disp_scaling * u
             y_nodes = self.mesh.nodes[:, 1] + config.disp_scaling * v

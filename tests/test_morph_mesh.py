@@ -2,6 +2,7 @@
 import pytest
 
 import fem.shape_functions as shape_functions
+from fem.fem_utils import ELEMENT_TRAITS
 from fem.useful_imports import *
 
 

@@ -49,6 +49,7 @@ class Config:
     #====================================================================
     show_nodes: bool = True
     show_element_edges: bool = True
+    show_deformed: bool = True  #Draw the deformed shape (plane stress only, plates are drawn undeformed)
     disp_scaling: float | str = "auto"  #Factor for the displacements in the plots. "auto": The largest is 10% of the mesh size
     show_labels: bool = False  #Node numbers, and element numbers in parentheses
     show_bcs: bool = True

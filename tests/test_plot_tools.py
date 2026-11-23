@@ -180,6 +180,16 @@ def test_automatic_displacement_scaling_can_be_replaced_by_true_scale():
     assert config.disp_scaling * largest_displacement == pytest.approx(0.4, rel=0.05)
 
 
+def test_disp_scale_box_is_only_shown_for_the_deformed_shape():
+    config, mesh, solver_data = solved_plane_stress_problem()
+    plot = plot_tools.Plot(config, mesh, solver_data)
+    assert config.show_deformed and plot.box_disp_scale.ax.get_visible()
+    assert not np.allclose(plot.node_markers.get_offsets(), mesh.nodes)
+    plot.check_buttons.set_active(4)  #Untick "deformed shape", which redraws the plot
+    assert not config.show_deformed and not plot.box_disp_scale.ax.get_visible()
+    assert np.allclose(plot.node_markers.get_offsets(), mesh.nodes)  #The nodes are back at their original positions
+
+
 def test_plot_field_with_automatic_displacement_scaling():
     config, mesh, solver_data = solved_plane_stress_problem()
     fig, ax = plt.subplots()
@@ -330,7 +340,7 @@ def test_save_screen_writes_an_image_to_the_current_directory(tmp_path, monkeypa
 
 def test_plot_field_in_a_script():
     config, mesh, solver_data = solved_plane_stress_problem()
-    config.disp_scaling = 0  #Show the undeformed mesh
+    config.show_deformed = False  #Show the undeformed mesh
     fig, ax = plt.subplots()
     contours = plot_field(ax, config, mesh, solver_data, "v")
     fig.colorbar(contours, ax=ax)
@@ -401,7 +411,7 @@ def test_forces_that_point_into_the_body_are_drawn_outside_it(traction, arrows_s
     solver_data = create_solver_data(config, mesh)
     solve(config, solver_data, mesh)
     config.arrow_type = "external forces"
-    config.disp_scaling = 0  #Keep the nodes on the edge
+    config.show_deformed = False  #Keep the nodes on the edge
     plot = plot_tools.Plot(config, mesh, solver_data)
     arrows = [collection for collection in plot.ax.collections if isinstance(collection, matplotlib.quiver.Quiver)][0]
     if arrows_start_at_the_edge:

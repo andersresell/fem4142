@@ -3,6 +3,7 @@ import pytest
 from problems import ALL_ELEMENT_TYPES, element_name
 
 import fem.shape_functions as shape_functions
+from fem.fem_utils import ELEMENT_TRAITS, ElementCategory
 from fem.useful_imports import *
 
 

@@ -1,6 +1,7 @@
 """Checks of the element traits in fem_utils.py."""
 import pytest
 
+from fem.fem_utils import ELEMENT_TRAITS, ElementEntity
 from fem.useful_imports import *
 
 # Written by hand. These are the tables that were in the code before they were calculated from il_to_ij.

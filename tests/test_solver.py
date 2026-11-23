@@ -153,6 +153,14 @@ def test_reaction_forces_balance_the_external_forces(element_type):
     assert np.isclose(np.sum(Ry_reaction), 1000.0)  #The reaction must carry the whole tip force
 
 
+def test_solving_twice_gives_the_same_result():
+    config, mesh, solver_data = solve_cantilever(ElementType.Q4, 4, 2)
+    r_first, R_ext_first = solver_data.r.copy(), solver_data.R_ext.copy()
+    solve(config, solver_data, mesh)
+    assert np.allclose(solver_data.R_ext, R_ext_first)
+    assert np.allclose(solver_data.r, r_first)
+
+
 @pytest.mark.parametrize("element_type, nEx, nEy", [(ElementType.Q9, 40, 4), (ElementType.Q16, 20, 4)],
                          ids=["Q9", "Q16"])
 def test_cantilever_tip_deflection_matches_timoshenko_beam_theory(element_type, nEx, nEy):
