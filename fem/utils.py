@@ -57,7 +57,7 @@ class Config:
     arrow_type: str = "none"  #"none", "disp", "external forces" or "reaction forces"
     symbol_scale: float = 1  #Scales the nodes, labels and boundary condition symbols
     arrow_scale: float = 1
-    fixed_contour_limits: bool = False  #If False, the limits follow the smallest and largest values
+    specify_contour_limits: bool = False  #If False, the limits follow the smallest and largest values
     contour_min: float = 0
     contour_max: float = 1
 

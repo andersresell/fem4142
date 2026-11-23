@@ -238,6 +238,7 @@ class Plot:
         self.element_labels = []
         self.bc_markers = []
         self.node_spacing = get_node_spacing(mesh, config.element_type)
+        self.has_center_node = (0, 0) in ELEMENT_TRAITS[config.element_type].xi_eta  #True for Q9
 
         self.field_names = get_field_names(config.problem_type)
         if config.contour not in self.field_names:
@@ -295,11 +296,13 @@ class Plot:
             self.box_disp_scale = TextBox(get_widget_axes(0.13, 0.08, 0.03), "disp scale ",
                                           initial=config.disp_scaling)
 
-        #The contour limit boxes are only shown when "fixed contour limits" is ticked (see update)
-        self.check_fixed_limits = CheckButtons(get_widget_axes(0.03, 0.2, 0.03), ["fixed contour limits"],
-                                               [config.fixed_contour_limits])
-        self.box_contour_max = TextBox(get_widget_axes(0.13, 0.08, 0.03), "max ", initial=config.contour_max)
-        self.box_contour_min = TextBox(get_widget_axes(0.13, 0.08, 0.03), "min ", initial=config.contour_min)
+        #The contour limit boxes are only shown when "specify contour limits" is ticked (see update)
+        self.check_specify_limits = CheckButtons(get_widget_axes(0.03, 0.2, 0.03), ["specify contour limits"],
+                                                 [config.specify_contour_limits])
+        #The min and max boxes are placed next to each other
+        bottom_of_row = self.top_of_next_widget - 0.03
+        self.box_contour_min = TextBox(plt.axes([0.06, bottom_of_row, 0.065, 0.03]), "min ", initial=config.contour_min)
+        self.box_contour_max = TextBox(plt.axes([0.165, bottom_of_row, 0.065, 0.03]), "max ", initial=config.contour_max)
 
         #The widgets at the bottom
         self.slider_symbol_scale = Slider(plt.axes([0.4, 0.13, 0.45, 0.03]), "symbol size", 0, 5,
@@ -313,7 +316,7 @@ class Plot:
         for radio in [self.radio_contour, self.radio_recovery, self.radio_arrows]:
             radio.on_clicked(self.update)
         self.check_buttons.on_clicked(self.update)
-        self.check_fixed_limits.on_clicked(self.update)
+        self.check_specify_limits.on_clicked(self.update)
         self.box_contour_max.on_submit(self.update)
         self.box_contour_min.on_submit(self.update)
         if self.box_disp_scale is not None:
@@ -324,7 +327,7 @@ class Plot:
         #All the text in the widgets, so that the font size can be changed when the window changes size
         widgets = [
             self.radio_contour, self.radio_recovery, self.radio_arrows, self.check_buttons, self.box_disp_scale,
-            self.check_fixed_limits, self.box_contour_max, self.box_contour_min, self.slider_symbol_scale,
+            self.check_specify_limits, self.box_contour_max, self.box_contour_min, self.slider_symbol_scale,
             self.slider_arrow_scale, self.save_button
         ]
         self.widget_texts = [text for widget in widgets if widget is not None for text in widget.ax.findobj(Text)]
@@ -337,7 +340,7 @@ class Plot:
         config.arrow_type = self.radio_arrows.value_selected
         config.show_labels, config.show_nodes, config.show_element_edges, config.show_bcs = \
             self.check_buttons.get_status()
-        config.fixed_contour_limits = self.check_fixed_limits.get_status()[0]
+        config.specify_contour_limits = self.check_specify_limits.get_status()[0]
         config.symbol_scale = self.slider_symbol_scale.val
         config.arrow_scale = self.slider_arrow_scale.val
         if self.box_disp_scale is not None:
@@ -348,7 +351,7 @@ class Plot:
                 config.disp_scaling = 1.0
 
         #The contour limits are shown rounded in the text boxes. They are only read if the user has changed the
-        #text, so that ticking "fixed" doesn't replace the exact limits by the rounded ones.
+        #text, so that ticking "specify contour limits" doesn't replace the exact limits by the rounded ones.
         for box, name in [(self.box_contour_min, "contour_min"), (self.box_contour_max, "contour_max")]:
             if box.text != format_contour_limit(getattr(config, name)):
                 try:
@@ -375,9 +378,9 @@ class Plot:
         for text in list(self.radio_recovery.labels) + [self.radio_recovery.ax.title]:
             text.set_color(recovery_color)
 
-        #The boxes for the contour limits are only shown when the limits are fixed (otherwise, see the colorbar)
-        self.box_contour_max.ax.set_visible(config.fixed_contour_limits)
-        self.box_contour_min.ax.set_visible(config.fixed_contour_limits)
+        #The boxes for the contour limits are only shown when they are specified (otherwise, see the colorbar)
+        self.box_contour_max.ax.set_visible(config.specify_contour_limits)
+        self.box_contour_min.ax.set_visible(config.specify_contour_limits)
 
         #====================================================================
         # Nodes, arrows and boundary conditions
@@ -406,7 +409,7 @@ class Plot:
                 self.cbar.ax.set_visible(False)
             return
 
-        if config.fixed_contour_limits:
+        if config.specify_contour_limits:
             contours.set_clim(config.contour_min, config.contour_max)
         else:
             #Remember the limits, and show them in the text boxes. The events must be switched off while doing this,
@@ -452,7 +455,8 @@ class Plot:
             label.xyann = (0.25 * size, 0.25 * size)  #Distance from the node (in points)
         for label in self.element_labels:
             label.set_fontsize(size)
-            label.xyann = (0, -0.4 * size)  #Below the center (in points)
+            if self.has_center_node:
+                label.xyann = (0, -0.4 * size)  #Below the center node (in points)
         for markers, relative_size in self.bc_markers:
             markers.set_sizes([(relative_size * size)**2])
             markers.set_linewidths(max(0.8, 0.12 * size))
@@ -497,15 +501,16 @@ class Plot:
                 self.node_labels.append(
                     self.ax.annotate(str(i), (x_nodes[i], y_nodes[i]), xytext=(0, 0), textcoords="offset points",
                                      zorder=20))
-            #The element numbers are shown in parentheses just below the center of the elements (xi = eta = 0),
-            #so that they don't cover the center node of Q9 elements
+            #The element numbers are shown in parentheses at the center of the elements (xi = eta = 0). If there is
+            #a node at the center (Q9), the number is placed just below it instead (see apply_sizes).
             N_center = shape_functions.calc_N(0.0, 0.0, config.element_type)
+            vertical_alignment = "top" if self.has_center_node else "center"
             for e in range(self.mesh.get_nE()):
                 nodeIDs = self.mesh.elements[e, :]
                 center = (N_center @ x_nodes[nodeIDs], N_center @ y_nodes[nodeIDs])
                 self.element_labels.append(
                     self.ax.annotate(f"({e})", center, xytext=(0, 0), textcoords="offset points", ha="center",
-                                     va="top", zorder=20))
+                                     va=vertical_alignment, zorder=20))
 
     def plot_bcs(self, x_nodes, y_nodes):
         """Draws a symbol at each node with a boundary condition"""

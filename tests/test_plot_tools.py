@@ -73,7 +73,7 @@ def test_plane_stress_arrows_labels_and_boundary_conditions(arrow_type):
     config.arrow_type = arrow_type
     config.show_bcs = True
     config.show_labels = True
-    config.fixed_contour_limits = True
+    config.specify_contour_limits = True
     plot_tools.Plot(config, mesh, solver_data)
 
 
@@ -140,23 +140,23 @@ def test_gui_calculates_the_L2_stresses_only_once(monkeypatch):
     assert len(calls) == 1
 
 
-def test_contour_limits_do_not_change_when_they_are_fixed():
-    """The limits are shown rounded in the text boxes, but ticking "fixed" must keep the exact limits"""
+def test_contour_limits_do_not_change_when_they_are_specified():
+    """The limits are shown rounded in the text boxes, but ticking "specify contour limits" must keep the exact limits"""
     config, mesh, solver_data = solved_plane_stress_problem()
     config.contour = "sigma_xx"
     plot = plot_tools.Plot(config, mesh, solver_data)
     limits_before = (plot.cbar.norm.vmin, plot.cbar.norm.vmax)
-    plot.check_fixed_limits.set_active(0)  #Tick "fixed", which redraws the plot
-    assert config.fixed_contour_limits
+    plot.check_specify_limits.set_active(0)  #Tick "specify contour limits", which redraws the plot
+    assert config.specify_contour_limits
     assert (plot.cbar.norm.vmin, plot.cbar.norm.vmax) == limits_before
 
 
-def test_contour_limit_boxes_are_only_shown_when_the_limits_are_fixed():
+def test_contour_limit_boxes_are_only_shown_when_the_limits_are_specified():
     config, mesh, solver_data = solved_plane_stress_problem()
     config.contour = "sigma_xx"
     plot = plot_tools.Plot(config, mesh, solver_data)
     assert not plot.box_contour_max.ax.get_visible() and not plot.box_contour_min.ax.get_visible()
-    plot.check_fixed_limits.set_active(0)  #Tick "fixed contour limits"
+    plot.check_specify_limits.set_active(0)  #Tick "specify contour limits"
     assert plot.box_contour_max.ax.get_visible() and plot.box_contour_min.ax.get_visible()
 
 
