@@ -46,8 +46,12 @@ def solved_plate_problem():
 
 def all_contours(problem_type):
     """All fields, and both stress recovery methods for the stresses"""
-    return [(field, recovery) for field in plot_tools.get_field_names(problem_type)
-            for recovery in (["consistent", "L2"] if plot_tools.is_stress_field(field) else ["consistent"])]
+    contours = []
+    for field in plot_tools.get_field_names(problem_type):
+        contours.append((field, "consistent"))
+        if plot_tools.is_stress_field(field):
+            contours.append((field, "L2"))
+    return contours
 
 
 @pytest.mark.parametrize("contour, stress_recovery_method", all_contours(ProblemType.PLANE_STRESS))
@@ -183,10 +187,27 @@ def test_plot_field_with_automatic_displacement_scaling():
     assert config.disp_scaling == "auto"  #plot_field doesn't change config
 
 
+def solved_clamped_plate_problem():
+    config = create_config(210e9, 0.3, 0.01, ElementType.Q9, ProblemType.PLATE)
+    mesh = create_structured_quad_mesh(config, 1.0, 1.0, 3, 3)
+    for edge in ["west", "east", "south", "north"]:
+        for dof in [Dof.W, Dof.THETAX, Dof.THETAY]:
+            add_boundary_condition(config, mesh, edge, dof, 0)
+    add_load(config, mesh, "domain", LoadType.PRESSURE, lambda x, y: 1000.0)
+    solver_data = create_solver_data(config, mesh)
+    solve(config, solver_data, mesh)
+    return config, mesh, solver_data
+
+
+CLAMPED = r"$w$, $\theta_x$ and $\theta_y$ prescribed (clamped)"
+
+
 @pytest.mark.parametrize("solve_problem, expected_labels", [
     (solved_plane_stress_problem, [r"$u$ and $v$ prescribed"]),
-    (solved_plate_problem, [r"$w$ prescribed", r"$\theta_x$ prescribed", r"$\theta_y$ prescribed"]),
-], ids=["plane stress", "plate"])
+    #The corner node between the two edges gets all three conditions, so it is clamped
+    (solved_plate_problem, [r"$w$ prescribed", r"$\theta_x$ prescribed", r"$\theta_y$ prescribed", CLAMPED]),
+    (solved_clamped_plate_problem, [CLAMPED]),
+], ids=["plane stress", "plate", "clamped plate"])
 def test_boundary_conditions_are_shown_by_default_and_explained_in_the_legend(solve_problem, expected_labels):
     config, mesh, solver_data = solve_problem()
     plot = plot_tools.Plot(config, mesh, solver_data)
@@ -197,7 +218,7 @@ def test_boundary_conditions_are_shown_by_default_and_explained_in_the_legend(so
 def test_disp_scale_and_arrows_are_only_shown_for_plane_stress():
     config, mesh, solver_data = solved_plate_problem()
     plot = plot_tools.Plot(config, mesh, solver_data)
-    assert plot.box_disp_scale is None and plot.radio_arrows is None
+    assert plot.box_disp_scale is None and plot.radio_arrows is None and plot.slider_arrow_scale is None
     config, mesh, solver_data = solved_plane_stress_problem()
     plot = plot_tools.Plot(config, mesh, solver_data)
     assert plot.box_disp_scale is not None and plot.radio_arrows is not None
@@ -337,3 +358,20 @@ def test_stress_in_an_invalid_element_is_left_out_of_the_plot():
     contours = plot_field(ax, config, mesh, solver_data, "sigma_xx")
     values = contours.get_array()
     assert np.any(values.mask) and not np.all(values.mask)  #Some points are left out, but not all
+
+
+def test_plate_applied_load_contour():
+    """The pressure q = 1000 * (1 + x), plus a body force b = 10000 that counts as b * h = 100"""
+    h = 0.01
+    config = create_config(210e9, 0.3, h, ElementType.Q9, ProblemType.PLATE)
+    mesh = create_structured_quad_mesh(config, 1.0, 1.0, 3, 3)
+    for edge in ["west", "east", "south", "north"]:
+        add_boundary_condition(config, mesh, edge, Dof.W, 0)
+    add_load(config, mesh, "domain", LoadType.PRESSURE, lambda x, y: 1000.0 * (1 + x))
+    add_load(config, mesh, "domain", LoadType.BODY_FORCE, lambda x, y: 10000.0)
+    solver_data = create_solver_data(config, mesh)
+    solve(config, solver_data, mesh)
+    fig, ax = plt.subplots()
+    contours = plot_field(ax, config, mesh, solver_data, "applied_load")
+    assert contours.get_clim() == pytest.approx((1000.0 + 100.0, 2000.0 + 100.0))
+    assert not plot_tools.is_stress_field("applied_load")

@@ -11,6 +11,7 @@ import matplotlib.colors as mcolors
 import matplotlib.lines as mlines
 from fem.fem_utils import *
 import fem.stress_recovery as stress_recovery
+import fem.loads as loads
 from fem.mesh import Mesh
 from fem.utils import Config
 from fem.solver_data import *
@@ -34,6 +35,7 @@ FIELD_LABELS = {
     "M_xy": r"$M_{xy}$",
     "V_x": r"$V_x$",
     "V_y": r"$V_y$",
+    "applied_load": r"applied load $p$ (force per area)",
 }
 
 #The column in the solution (one row per node) that each displacement field is taken from
@@ -48,7 +50,9 @@ GRAY_COLORMAP = mcolors.ListedColormap(["grey"])  #Used when no field is shown
 #   u prescribed: The same, rotated 90 degrees
 #   u and v prescribed: A triangle on a hatched ground (a pin)
 #   w prescribed: A dot
-#   thetax and thetay prescribed: A vertical and a horizontal line
+#   thetax and thetay prescribed: An arrow with a double arrowhead along the x- or y-axis. This is the moment
+#                                 vector notation for a rotation about that axis (right-hand rule).
+#   w, thetax and thetay prescribed: A square (clamped)
 # Each symbol has a size (relative to the symbol size) and a label for the legend.
 #====================================================================
 M, L = Path.MOVETO, Path.LINETO  #Move the pen, or draw a line
@@ -61,8 +65,11 @@ BC_SYMBOLS = {
                       (-0.65, -0.75), (-0.45, -1), (-0.2, -0.75), (0, -1), (0.25, -0.75), (0.45, -1), (0.7, -0.75)],
                      [M, L, L, L, M, L, M, L, M, L, M, L, M, L]), 2.8, r"$u$ and $v$ prescribed"),
     "w": ("o", 0.9, r"$w$ prescribed"),
-    "theta_x": (Path([(0, -1), (0, 1)], [M, L]), 2.0, r"$\theta_x$ prescribed"),
-    "theta_y": (Path([(-1, 0), (1, 0)], [M, L]), 2.0, r"$\theta_y$ prescribed"),
+    "theta_x": (Path([(-1, 0), (1, 0), (0.65, 0.3), (1, 0), (0.65, -0.3), (0.3, 0.3), (0.65, 0), (0.3, -0.3)],
+                     [M, L, M, L, L, M, L, L]), 2.2, r"$\theta_x$ prescribed"),
+    "theta_y": (Path([(0, -1), (0, 1), (0.3, 0.65), (0, 1), (-0.3, 0.65), (0.3, 0.3), (0, 0.65), (-0.3, 0.3)],
+                     [M, L, M, L, L, M, L, L]), 2.2, r"$\theta_y$ prescribed"),
+    "clamped": ("s", 0.9, r"$w$, $\theta_x$ and $\theta_y$ prescribed (clamped)"),
 }
 
 
@@ -72,11 +79,11 @@ def get_field_names(problem_type):
         return ["none", "u", "v", "u_mag", "sigma_xx", "sigma_yy", "sigma_xy", "sigma_vm"]
     else:
         assert problem_type == ProblemType.PLATE
-        return ["none", "w", "theta_x", "theta_y", "M_xx", "M_yy", "M_xy", "V_x", "V_y"]
+        return ["none", "w", "theta_x", "theta_y", "M_xx", "M_yy", "M_xy", "V_x", "V_y", "applied_load"]
 
 
 def is_stress_field(field):
-    return field not in DOF_FIELDS and field not in ["none", "u_mag"]
+    return field in ["sigma_xx", "sigma_yy", "sigma_xy", "sigma_vm", "M_xx", "M_yy", "M_xy", "V_x", "V_y"]
 
 
 #====================================================================
@@ -111,6 +118,27 @@ def create_plot_grid(n):
     return xi_eta, np.array(triangles), np.array(outline)
 
 
+def calc_applied_load_in_element(config: Config, mesh: Mesh, e, N):
+    """The load per area on a plate from all the loads on the face of element e, at the points where the shape
+    functions N are given. The load functions are evaluated at the points. A pressure counts as it is, and a body
+    force counts as the body force times the thickness, like in the load integration. (Line loads on the edges are
+    not included.)"""
+    nodeIDs = mesh.elements[e, :]
+    x = N @ mesh.nodes[nodeIDs, 0]
+    y = N @ mesh.nodes[nodeIDs, 1]
+    load_per_area = np.zeros(len(N))
+    for load in config.loads:
+        element_set = mesh.element_sets[load.element_set_name]
+        if element_set.element_entity != ElementEntity.FACE or e not in element_set.elementIDs:
+            continue
+        for i in range(len(N)):
+            value = loads.evaluate_scalar_load(load, x[i], y[i])
+            if load.load_type == LoadType.BODY_FORCE:
+                value *= config.h
+            load_per_area[i] += value
+    return load_per_area
+
+
 def calc_field_in_element(config: Config, mesh: Mesh, solver_data: SolverData, field, e, N, dNdxi, dNdeta,
                           nodal_stress_L2):
     """Calculates the field in element e at the points where the shape functions N, dNdxi, dNdeta are given"""
@@ -124,6 +152,8 @@ def calc_field_in_element(config: Config, mesh: Mesh, solver_data: SolverData, f
         return N @ r_e[:, DOF_FIELDS[field]]
     if field == "u_mag":
         return np.sqrt((N @ r_e[:, 0])**2 + (N @ r_e[:, 1])**2)
+    if field == "applied_load":
+        return calc_applied_load_in_element(config, mesh, e, N)
 
     #The rest of the fields are stresses
     if config.stress_recovery == "consistent":
@@ -280,7 +310,11 @@ class Plot:
         self.fig, self.ax = plt.subplots(figsize=(11, 8))
         plt.subplots_adjust(left=0.3, bottom=0.25)
         self.create_widgets()
-        problem_name = "Plane stress" if config.problem_type == ProblemType.PLANE_STRESS else "Mindlin plate"
+        if config.problem_type == ProblemType.PLANE_STRESS:
+            problem_name = "Plane stress"
+        else:
+            assert config.problem_type == ProblemType.PLATE
+            problem_name = "Mindlin plate"
         self.title = self.fig.suptitle(f"{problem_name} problem: {config.element_type.name} element")
 
         self.fig.canvas.mpl_connect("resize_event", self.on_resize)
@@ -339,8 +373,10 @@ class Plot:
         #The widgets at the bottom
         self.slider_symbol_scale = Slider(plt.axes([0.4, 0.13, 0.45, 0.03]), "symbol size", 0, 5,
                                           valinit=config.symbol_scale)
-        self.slider_arrow_scale = Slider(plt.axes([0.4, 0.08, 0.45, 0.03]), "arrow size", 0, 5,
-                                         valinit=config.arrow_scale)
+        self.slider_arrow_scale = None
+        if self.radio_arrows is not None:  #Only for plane stress, like the arrows
+            self.slider_arrow_scale = Slider(plt.axes([0.4, 0.08, 0.45, 0.03]), "arrow size", 0, 5,
+                                             valinit=config.arrow_scale)
         self.save_button = Button(plt.axes([0.4, 0.02, 0.15, 0.04]), "Save Screen", color="lightblue",
                                   hovercolor="skyblue")
         self.save_button.on_clicked(self.save_screen)
@@ -355,7 +391,8 @@ class Plot:
         if self.box_disp_scale is not None:
             self.box_disp_scale.on_submit(self.update)
         self.slider_symbol_scale.on_changed(self.update)
-        self.slider_arrow_scale.on_changed(self.update)
+        if self.slider_arrow_scale is not None:
+            self.slider_arrow_scale.on_changed(self.update)
 
         #All the text in the widgets, so that the font size can be changed when the window changes size
         widgets = [
@@ -376,7 +413,8 @@ class Plot:
             self.check_buttons.get_status()
         config.specify_contour_limits = self.check_specify_limits.get_status()[0]
         config.symbol_scale = self.slider_symbol_scale.val
-        config.arrow_scale = self.slider_arrow_scale.val
+        if self.slider_arrow_scale is not None:
+            config.arrow_scale = self.slider_arrow_scale.val
         if self.box_disp_scale is not None:
             if self.box_disp_scale.text.strip().lower() == "auto":
                 config.disp_scaling = "auto"
@@ -419,7 +457,10 @@ class Plot:
         self.update_contour_limits_and_colorbar(contours)
 
         #The stress recovery only matters for stresses, so it is greyed out when another field is shown
-        recovery_color = "black" if is_stress_field(config.contour) else "lightgrey"
+        if is_stress_field(config.contour):
+            recovery_color = "black"
+        else:
+            recovery_color = "lightgrey"
         for text in list(self.radio_recovery.labels) + [self.radio_recovery.ax.title]:
             text.set_color(recovery_color)
 
@@ -552,7 +593,10 @@ class Plot:
             #The element numbers are shown in parentheses at the center of the elements (xi = eta = 0). If there is
             #a node at the center (Q9), the number is placed just below it instead (see apply_sizes).
             N_center = shape_functions.calc_N(0.0, 0.0, config.element_type)
-            vertical_alignment = "top" if self.has_center_node else "center"
+            if self.has_center_node:
+                vertical_alignment = "top"
+            else:
+                vertical_alignment = "center"
             for e in range(self.mesh.get_nE()):
                 nodeIDs = self.mesh.elements[e, :]
                 center = (N_center @ x_nodes[nodeIDs], N_center @ y_nodes[nodeIDs])
@@ -579,17 +623,25 @@ class Plot:
                 nodes_with_symbol["u"].append(I)
             elif Dof.V in dofs:
                 nodes_with_symbol["v"].append(I)
-            for dof, symbol_name in [(Dof.W, "w"), (Dof.THETAX, "theta_x"), (Dof.THETAY, "theta_y")]:
-                if dof in dofs:
-                    nodes_with_symbol[symbol_name].append(I)
+            if Dof.W in dofs and Dof.THETAX in dofs and Dof.THETAY in dofs:
+                nodes_with_symbol["clamped"].append(I)
+            else:
+                for dof, symbol_name in [(Dof.W, "w"), (Dof.THETAX, "theta_x"), (Dof.THETAY, "theta_y")]:
+                    if dof in dofs:
+                        nodes_with_symbol[symbol_name].append(I)
 
         for symbol_name, nodeIDs in nodes_with_symbol.items():
             if len(nodeIDs) == 0:
                 continue
             marker, relative_size, label = BC_SYMBOLS[symbol_name]
-            fill_color = "magenta" if symbol_name == "w" else "none"  #Only the dots for w are filled
+            if symbol_name in ["w", "clamped"]:  #The dots and squares are filled, and drawn behind the nodes
+                fill_color = "magenta"
+                zorder = 9
+            else:
+                fill_color = "none"
+                zorder = 15
             markers = self.ax.scatter(x_nodes[nodeIDs], y_nodes[nodeIDs], marker=marker, facecolors=fill_color,
-                                      edgecolors="magenta", zorder=9 if symbol_name == "w" else 15)
+                                      edgecolors="magenta", zorder=zorder)
             self.bc_markers.append((markers, relative_size))
             self.legend_handles.append(
                 mlines.Line2D([], [], marker=marker, markersize=12 * min(relative_size, 1.2), linestyle="None",

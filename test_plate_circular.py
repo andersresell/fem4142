@@ -9,8 +9,8 @@ if __name__ == "__main__":
     Ly = R
     q = -1e6
     problem_type = ProblemType.PLATE
-    nEx = 20  # 4
-    nEy = 20  # 4
+    nEx = 1  # 4
+    nEy = 1  # 4
     thickness_ratios = np.logspace(1, 6, 10)
     # thickness_ratios = [10, 20, 30, 50, 100, 200, 300, 500, 1000, 1e6]
     # thickness_ratios = [10, 100, 1000, 10000]
@@ -44,7 +44,7 @@ if __name__ == "__main__":
                 add_boundary_condition(config, mesh, "north", Dof.THETAX, 0)
                 add_boundary_condition(config, mesh, "north", Dof.THETAY, 0)
 
-            load_func = lambda x, y: q
+            load_func = lambda x, y: q * x
             add_load(config, mesh, "domain", LoadType.PRESSURE, load_func)
 
             solver_data = create_solver_data(config, mesh)

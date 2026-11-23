@@ -163,7 +163,7 @@ def integrate_element_face_load_plane_stress(config: Config, mesh: Mesh, load: L
             N = shape_functions.calc_N(xi, eta, element_type)
             J = shape_functions.calc_J(xi, eta, x_l, y_l, element_type)
             detJ = np.linalg.det(J)
-            if detJ < SMALL_VAL:
+            if detJ <= 0:
                 raise ValueError(f"Element {e} has a zero or negative Jacobian determinant: {detJ}. "
                                  f"Check the element geometry and node ordering.")
 
@@ -204,7 +204,7 @@ def integrate_element_edge_load_plane_stress(config: Config, mesh: Mesh, load: L
         dxdxi = dNdxi @ x_edge
         dydxi = dNdxi @ y_edge
         detJ = np.sqrt(dxdxi**2 + dydxi**2)
-        if detJ < SMALL_VAL:
+        if detJ <= 0:
             raise ValueError(f"Element {e} has a zero or negative Jacobian determinant: {detJ}. "
                              f"Check the element geometry and node ordering.")
 
@@ -250,7 +250,7 @@ def integrate_element_face_load_plate(config: Config, mesh: Mesh, load: Load, no
             N = shape_functions.calc_N(xi, eta, element_type)
             J = shape_functions.calc_J(xi, eta, x_l, y_l, element_type)
             detJ = np.linalg.det(J)
-            if detJ < SMALL_VAL:
+            if detJ <= 0:
                 raise ValueError(f"Element {e} has a zero or negative Jacobian determinant: {detJ}. "
                                  f"Check the element geometry and node ordering.")
 
@@ -292,7 +292,7 @@ def integrate_element_edge_load_plate(config: Config, mesh: Mesh, load: Load, no
         dxdxi = dNdxi @ x_edge
         dydxi = dNdxi @ y_edge
         detJ = np.sqrt(dxdxi**2 + dydxi**2)
-        if detJ < SMALL_VAL:
+        if detJ <= 0:
             raise ValueError(f"Element {e} has a zero or negative Jacobian determinant: {detJ}. "
                              f"Check the element geometry and node ordering.")
 

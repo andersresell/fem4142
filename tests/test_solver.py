@@ -237,3 +237,18 @@ def test_plate_result_is_unchanged(element_type):
     w, thetax, thetay = unpack_solution(config, solver_data.r)
     w_center = w[find_node_closest_to(mesh, 0.5, 0.5)]
     assert w_center == pytest.approx(PLATE_CENTER_DEFLECTION_4x4[element_type], rel=1e-9)
+
+
+def test_small_structure_in_metres():
+    """A 1 mm x 0.5 mm plate in uniaxial tension, with the lengths in metres. The elements are so small that
+    det(J) is about 1e-9, which must not be mistaken for a distorted element. Exact solution: u = sigma0 * x / E."""
+    E, sigma0, Lx, Ly = 210e9, 1e6, 1e-3, 0.5e-3
+    config = create_config(E, 0.3, 1e-3, ElementType.Q4, ProblemType.PLANE_STRESS)
+    mesh = create_structured_quad_mesh(config, Lx, Ly, 20, 10)
+    add_boundary_condition(config, mesh, "west", Dof.U, 0)
+    add_boundary_condition(config, mesh, "south_west", Dof.V, 0)
+    add_load(config, mesh, "east", LoadType.TRACTION, lambda x, y: (sigma0, 0.0))
+    solver_data = create_solver_data(config, mesh)
+    solve(config, solver_data, mesh)
+    u, v = unpack_solution(config, solver_data.r)
+    assert np.allclose(u, sigma0 * mesh.nodes[:, 0] / E, rtol=1e-8, atol=1e-18)

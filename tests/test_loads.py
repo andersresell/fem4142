@@ -90,5 +90,9 @@ def test_scalar_load_functions_of_common_types_are_accepted(load_function):
 def test_invalid_load_functions_are_rejected(load_type, load_function):
     config = create_config(1.0, 0.3, h, ElementType.Q4, ProblemType.PLANE_STRESS)
     mesh = create_structured_quad_mesh(config, Lx, Ly, 2, 2)
+    if load_type == LoadType.TRACTION:
+        element_set_name = "east"
+    else:
+        element_set_name = "north"
     with pytest.raises(ValueError):
-        add_load(config, mesh, "east" if load_type == LoadType.TRACTION else "north", load_type, load_function)
+        add_load(config, mesh, element_set_name, load_type, load_function)
