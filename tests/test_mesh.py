@@ -7,7 +7,7 @@ from fem.useful_imports import *
 
 
 def make_mesh(element_type, nEx=3, nEy=2, Lx=3.0, Ly=2.0, perturb_mesh_nodes_factor=0.0):
-    config = create_config(1.0, 0.3, 1.0, element_type, PROBLEM_TYPE_PLANE_STRESS)
+    config = create_config(1.0, 0.3, 1.0, element_type, ProblemType.PLANE_STRESS)
     return create_structured_quad_mesh(config, Lx, Ly, nEx, nEy, perturb_mesh_nodes_factor)
 
 
@@ -15,8 +15,8 @@ def make_mesh(element_type, nEx=3, nEy=2, Lx=3.0, Ly=2.0, perturb_mesh_nodes_fac
 def test_number_of_nodes_and_elements(element_type):
     nEx, nEy = 3, 2
     mesh = make_mesh(element_type, nEx, nEy)
-    n = element_type_to_nNl_1D[element_type] - 1  # Number of node spacings along an element edge
-    if element_type_to_category(element_type) == ELEMENT_CATEGORY_LAGRANGIAN:
+    n = ELEMENT_TRAITS[element_type].nNl_1D - 1  # Number of node spacings along an element edge
+    if ELEMENT_TRAITS[element_type].category == ElementCategory.LAGRANGIAN:
         expected_nN = (n * nEx + 1) * (n * nEy + 1)
     else:
         expected_nN = (2 * nEx + 1) * (2 * nEy + 1) - nEx * nEy  #Serendipity elements have no center node
@@ -37,7 +37,7 @@ def test_neighbouring_elements_share_edge_nodes(element_type):
 def test_edge_node_sets_lie_on_their_edges(element_type):
     Lx, Ly, nEx, nEy = 3.0, 2.0, 3, 2
     mesh = make_mesh(element_type, nEx, nEy, Lx, Ly)
-    n = element_type_to_nNl_1D[element_type] - 1
+    n = ELEMENT_TRAITS[element_type].nNl_1D - 1
     x, y = mesh.nodes[:, 0], mesh.nodes[:, 1]
     assert np.allclose(x[mesh.node_sets["west"]], 0.0) and len(mesh.node_sets["west"]) == n * nEy + 1
     assert np.allclose(x[mesh.node_sets["east"]], Lx) and len(mesh.node_sets["east"]) == n * nEy + 1
@@ -64,10 +64,10 @@ def test_perturbed_mesh_keeps_its_outer_boundary_and_positive_jacobians(element_
 @pytest.mark.parametrize("nEx, nEy, Lx, Ly", [(0, 1, 1.0, 1.0), (1, 0, 1.0, 1.0), (1, 1, 0.0, 1.0), (1, 1, 1.0, -1.0)])
 def test_invalid_mesh_input_raises_an_error(nEx, nEy, Lx, Ly):
     with pytest.raises(ValueError):
-        make_mesh(ELEMENT_TYPE_Q4, nEx, nEy, Lx, Ly)
+        make_mesh(ElementType.Q4, nEx, nEy, Lx, Ly)
 
 
 @pytest.mark.parametrize("factor", [-0.1, 1.5])
 def test_invalid_perturbation_factor_raises_an_error(factor):
     with pytest.raises(ValueError):
-        make_mesh(ELEMENT_TYPE_Q4, perturb_mesh_nodes_factor=factor)
+        make_mesh(ElementType.Q4, perturb_mesh_nodes_factor=factor)

@@ -5,7 +5,7 @@ from fem.fem_utils import *
 
 
 def calc_Ke_plane_stress(config: Config, mesh: Mesh, e):
-    assert config.problem_type == PROBLEM_TYPE_PLANE_STRESS
+    assert config.problem_type == ProblemType.PLANE_STRESS
     assert e >= 0 and e < mesh.get_nE()
     element_type = config.element_type
     E = config.E
@@ -14,7 +14,7 @@ def calc_Ke_plane_stress(config: Config, mesh: Mesh, e):
     elements = mesh.elements
     x_l = mesh.nodes[elements[e, :], 0]
     y_l = mesh.nodes[elements[e, :], 1]
-    nNl = element_type_to_nNl[element_type]
+    nNl = ELEMENT_TRAITS[element_type].nNl
     assert len(x_l) == nNl and len(x_l) == nNl
 
     #fmt: off
@@ -23,7 +23,7 @@ def calc_Ke_plane_stress(config: Config, mesh: Mesh, e):
                                     [0,     0,  (1 - nu) / 2]])
     #fmt: on
 
-    nGauss = shape_functions.element_type_to_nGauss_1D[element_type]
+    nGauss = ELEMENT_TRAITS[element_type].nGauss_1D
     arr_xi = shape_functions.get_arr_xi(nGauss)
     arr_w = shape_functions.get_arr_w(nGauss)
 
@@ -53,7 +53,7 @@ def calc_Ke_plane_stress(config: Config, mesh: Mesh, e):
 
 
 def calc_Ke_hourglass_plane_stress_Q4R(config: Config, mesh: Mesh, e):
-    assert config.element_type == ELEMENT_TYPE_Q4R
+    assert config.element_type == ElementType.Q4R
     #====================================================================
     # Add hourglass stabilization term: See Page 522, eq. (8.7.11) in
     # the book Nonlinear Finite Elements for Continua and Structures, by
@@ -70,7 +70,7 @@ def calc_Ke_hourglass_plane_stress_Q4R(config: Config, mesh: Mesh, e):
     elements = mesh.elements
     x_l = mesh.nodes[elements[e, :], 0]
     y_l = mesh.nodes[elements[e, :], 1]
-    nNl = element_type_to_nNl[element_type]
+    nNl = ELEMENT_TRAITS[element_type].nNl
     assert len(x_l) == nNl and len(x_l) == nNl
     dNdx, dNdy = shape_functions.calc_dNdx_dNdy(xi, eta, x_l, y_l, element_type)
     J = shape_functions.calc_J(xi, eta, x_l, y_l, element_type)
@@ -100,7 +100,7 @@ def calc_Ke_hourglass_plane_stress_Q4R(config: Config, mesh: Mesh, e):
 
 
 def calc_Ke_mindlin_plate(config: Config, mesh: Mesh, e):
-    assert config.problem_type == PROBLEM_TYPE_PLATE
+    assert config.problem_type == ProblemType.PLATE
     assert e >= 0 and e < mesh.get_nE()
     element_type = config.element_type
     E = config.E
@@ -109,7 +109,7 @@ def calc_Ke_mindlin_plate(config: Config, mesh: Mesh, e):
     elements = mesh.elements
     x_l = mesh.nodes[elements[e, :], 0]
     y_l = mesh.nodes[elements[e, :], 1]
-    nNl = element_type_to_nNl[element_type]
+    nNl = ELEMENT_TRAITS[element_type].nNl
     assert len(x_l) == nNl and len(x_l) == nNl
 
     #fmt: off
@@ -121,7 +121,7 @@ def calc_Ke_mindlin_plate(config: Config, mesh: Mesh, e):
 
     hs = 5 / 6 * h
 
-    nGauss = shape_functions.element_type_to_nGauss_1D[element_type]
+    nGauss = ELEMENT_TRAITS[element_type].nGauss_1D
     arr_xi = shape_functions.get_arr_xi(nGauss)
     arr_w = shape_functions.get_arr_w(nGauss)
 

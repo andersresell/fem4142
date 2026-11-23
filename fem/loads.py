@@ -1,4 +1,4 @@
-from fem.mesh import Mesh, QuadElementTraits
+from fem.mesh import Mesh
 from fem.utils import Config, BC, Load
 from fem.solver_data import SolverData
 from fem.fem_utils import *
@@ -72,98 +72,86 @@ def check_load_validity(config: Config, mesh: Mesh, element_set_name, load_type,
     # the problem type and the type of element set
     #====================================================================
     element_set = element_sets[element_set_name]
-    element_entity = element_set.element_entity
-    geometry_type = element_entity_to_geometry_type[element_entity]
-    if config.problem_type == PROBLEM_TYPE_PLANE_STRESS:
-        if geometry_type == ELEMENT_GEOMETRY_TYPE_EDGE:
-            if load_type not in [LOAD_TYPE_TRACTION, LOAD_TYPE_PRESSURE]:
-                raise Exception(
-                    f"Load type '{load_type_to_string[load_type]}' is not valid for {problem_type_to_string[config.problem_type]} "
-                    f"when the element set defines an edge.")
-        else:
-            assert geometry_type == ELEMENT_GEOMETRY_TYPE_FACE
-            if load_type not in [LOAD_TYPE_TRACTION, LOAD_TYPE_BODY_FORCE]:
-                raise Exception(
-                    f"Load type '{load_type_to_string[load_type]}' is not valid for {problem_type_to_string[config.problem_type]} "
-                    f"when the element set defines a face.")
-    else:
-        assert config.problem_type == PROBLEM_TYPE_PLATE
-        if geometry_type == ELEMENT_GEOMETRY_TYPE_EDGE:
-            if load_type != LOAD_TYPE_TRACTION:
-                raise Exception(f"Only LOAD_TYPE_TRACTION is valid for {problem_type_to_string[config.problem_type]} "
+    is_face = element_set.element_entity == ElementEntity.FACE  #Otherwise, the element set defines edges
+    problem_type_name = config.problem_type.name
+    if config.problem_type == ProblemType.PLANE_STRESS:
+        if not is_face:
+            if load_type not in [LoadType.TRACTION, LoadType.PRESSURE]:
+                raise Exception(f"LoadType.{load_type.name} is not valid for {problem_type_name} "
                                 f"when the element set defines an edge.")
         else:
-            assert geometry_type == ELEMENT_GEOMETRY_TYPE_FACE
-            if load_type not in [LOAD_TYPE_PRESSURE, LOAD_TYPE_BODY_FORCE]:
-                raise Exception(
-                    f"Only LOAD_TYPE_PRESSURE and LOAD_TYPE_BODY_FORCE are valid for {problem_type_to_string[config.problem_type]} "
-                    f"when the element set defines a face.")
+            if load_type not in [LoadType.TRACTION, LoadType.BODY_FORCE]:
+                raise Exception(f"LoadType.{load_type.name} is not valid for {problem_type_name} "
+                                f"when the element set defines a face.")
+    else:
+        assert config.problem_type == ProblemType.PLATE
+        if not is_face:
+            if load_type != LoadType.TRACTION:
+                raise Exception(f"Only LoadType.TRACTION is valid for {problem_type_name} "
+                                f"when the element set defines an edge.")
+        else:
+            if load_type not in [LoadType.PRESSURE, LoadType.BODY_FORCE]:
+                raise Exception(f"Only LoadType.PRESSURE and LoadType.BODY_FORCE are valid for {problem_type_name} "
+                                f"when the element set defines a face.")
 
     #====================================================================
     # Then a bunch of checks to ensure the load function is valid
     #====================================================================
     num_output_components = validate_load_func(load_function)
     assert num_output_components in [1, 2]
-    if config.problem_type == PROBLEM_TYPE_PLANE_STRESS:
-        if load_type == LOAD_TYPE_TRACTION or load_type == LOAD_TYPE_BODY_FORCE:
+    if config.problem_type == ProblemType.PLANE_STRESS:
+        if load_type == LoadType.TRACTION or load_type == LoadType.BODY_FORCE:
             if num_output_components == 1:
                 raise Exception(
-                    f"A load function that returns a single value cannot be used with LOAD_TYPE_TRACTION or LOAD_TYPE_BODY_FORCE in "
-                    f"{problem_type_to_string[config.problem_type]}. Use LOAD_TYPE_PRESSURE instead.")
+                    f"A load function that returns a single value cannot be used with LoadType.TRACTION or LoadType.BODY_FORCE in "
+                    f"{problem_type_name}. Use LoadType.PRESSURE instead.")
             elif num_output_components != 2:
                 raise Exception(f"Load function must return either a single value or a tuple of two values. "
                                 f"Got {num_output_components} components instead.")
         else:
-            assert load_type == LOAD_TYPE_PRESSURE
+            assert load_type == LoadType.PRESSURE
             if num_output_components != 1:
-                raise Exception(
-                    f"Load function must return a single value for LOAD_TYPE_PRESSURE in {problem_type_to_string[config.problem_type]}. "
-                    f"Got {num_output_components} components instead.")
+                raise Exception(f"Load function must return a single value for LoadType.PRESSURE in {problem_type_name}. "
+                                f"Got {num_output_components} components instead.")
     else:
-        assert config.problem_type == PROBLEM_TYPE_PLATE
+        assert config.problem_type == ProblemType.PLATE
         if num_output_components != 1:
-            raise Exception(
-                f"Load type '{load_type_to_string[load_type]}' is not valid for a load function that returns "
-                f"{num_output_components} components in {problem_type_to_string[config.problem_type]}. "
-                f"Use a single-valued load function for LOAD_TYPE_TRACTION, LOAD_TYPE_PRESSURE or LOAD_TYPE_BODY_FORCE."
-            )
+            raise Exception(f"LoadType.{load_type.name} is not valid for a load function that returns "
+                            f"{num_output_components} components in {problem_type_name}. "
+                            f"Use a single-valued load function for LoadType.TRACTION, LoadType.PRESSURE or "
+                            f"LoadType.BODY_FORCE.")
 
 
 def add_load(config: Config, mesh: Mesh, element_set_name, load_type, load_function):
     """Adds a load to the specified element set with the given load function.
        The load function is a lambda or function that takes (x, y) coordinates and
-       returns either a single value (for LOAD_TYPE_PRESSURE) or a tuple of two values
-       (for LOAD_TYPE_TRACTION or LOAD_TYPE_BODY_FORCE). 
+       returns either a single value (for LoadType.PRESSURE) or a tuple of two values
+       (for LoadType.TRACTION or LoadType.BODY_FORCE).
        Examples:
-       load_function = lambda x, y: (10, x) # For LOAD_TYPE_TRACTION or LOAD_TYPE_BODY_FORCE
-       load_function = lambda x, y: 10 # For LOAD_TYPE_PRESSURE
+       load_function = lambda x, y: (10, x) # For LoadType.TRACTION or LoadType.BODY_FORCE
+       load_function = lambda x, y: 10 # For LoadType.PRESSURE
     """
-
+    load_type = LoadType(load_type)  #Gives a clear error message if the load type is not valid
     try:
         check_load_validity(config, mesh, element_set_name, load_type, load_function)
     except Exception as e:
         raise ValueError(f"Invalid load configuration for element set '{element_set_name}' "
-                         f"and load type '{load_type_to_string[load_type]}':\n{e}")
+                         f"and LoadType.{load_type.name}:\n{e}")
 
-    loads = config.loads
-    load = Load()
-    load.element_set_name = element_set_name
-    load.load_type = load_type
-    load.load_function = load_function
-    loads.append(load)
+    config.loads.append(Load(element_set_name, load_type, load_function))
 
 
 def integrate_element_face_load_plane_stress(config: Config, mesh: Mesh, load: Load, nodeIDs_l, e):
-    assert config.problem_type == PROBLEM_TYPE_PLANE_STRESS
+    assert config.problem_type == ProblemType.PLANE_STRESS
     element_type = config.element_type
     h = config.h
     nNl_face = len(nodeIDs_l)
-    assert nNl_face == element_type_to_nNl[config.element_type]
+    assert nNl_face == ELEMENT_TRAITS[config.element_type].nNl
     nodeIDs = mesh.elements[e, nodeIDs_l]
     x_l = mesh.nodes[nodeIDs, 0]
     y_l = mesh.nodes[nodeIDs, 1]
-    #We integrate loads with full integration even if the element stiffness matrix uses reduced integration.
-    nGauss_1D = shape_functions.element_type_to_nGauss_1D[element_type] + element_uses_reduced_integration[element_type]
+    #Loads are always fully integrated (as many Gauss points as nodes along an edge), also for R elements
+    nGauss_1D = ELEMENT_TRAITS[element_type].nNl_1D
     arr_xi = shape_functions.get_arr_xi(nGauss_1D)
     arr_w = shape_functions.get_arr_w(nGauss_1D)
     R_load = np.zeros(2 * nNl_face)
@@ -183,10 +171,10 @@ def integrate_element_face_load_plane_stress(config: Config, mesh: Mesh, load: L
             x_Gauss = N @ x_l
             y_Gauss = N @ y_l
 
-            if load.load_type == LOAD_TYPE_TRACTION:
+            if load.load_type == LoadType.TRACTION:
                 t = evaluate_vector_load(load, x_Gauss, y_Gauss)
             else:
-                assert load.load_type == LOAD_TYPE_BODY_FORCE
+                assert load.load_type == LoadType.BODY_FORCE
                 b = evaluate_vector_load(load, x_Gauss, y_Gauss)
                 t = h * b  #convert body force to a in plane traction by multiplying by the plate thickness
 
@@ -196,15 +184,15 @@ def integrate_element_face_load_plane_stress(config: Config, mesh: Mesh, load: L
 
 
 def integrate_element_edge_load_plane_stress(config: Config, mesh: Mesh, load: Load, nodeIDs_l, e):
-    assert config.problem_type == PROBLEM_TYPE_PLANE_STRESS
+    assert config.problem_type == ProblemType.PLANE_STRESS
     element_type = config.element_type
     h = config.h
     nNl_edge = len(nodeIDs_l)
     nodeIDs = mesh.elements[e, nodeIDs_l]
     x_edge = mesh.nodes[nodeIDs, 0]
     y_edge = mesh.nodes[nodeIDs, 1]
-    #We integrate loads with full integration even if the element uses reduced integration.
-    nGauss = shape_functions.element_type_to_nGauss_1D[element_type] + element_uses_reduced_integration[element_type]
+    #Loads are always fully integrated (as many Gauss points as nodes along an edge), also for R elements
+    nGauss = ELEMENT_TRAITS[element_type].nNl_1D
     arr_xi = shape_functions.get_arr_xi(nGauss)
     arr_w = shape_functions.get_arr_w(nGauss)
     R_load = np.zeros(2 * nNl_edge)
@@ -226,10 +214,10 @@ def integrate_element_edge_load_plane_stress(config: Config, mesh: Mesh, load: L
         #Used to evaluate the load function at the Gauss points
         x_Gauss = N @ x_edge
         y_Gauss = N @ y_edge
-        if load.load_type == LOAD_TYPE_TRACTION:
+        if load.load_type == LoadType.TRACTION:
             t = evaluate_vector_load(load, x_Gauss, y_Gauss)
         else:
-            assert load.load_type == LOAD_TYPE_PRESSURE
+            assert load.load_type == LoadType.PRESSURE
             p = evaluate_scalar_load(load, x_Gauss, y_Gauss)
             t = -p * normal
 
@@ -239,16 +227,16 @@ def integrate_element_edge_load_plane_stress(config: Config, mesh: Mesh, load: L
 
 
 def integrate_element_face_load_plate(config: Config, mesh: Mesh, load: Load, nodeIDs_l, e):
-    assert config.problem_type == PROBLEM_TYPE_PLATE
+    assert config.problem_type == ProblemType.PLATE
     element_type = config.element_type
     h = config.h
     nNl_face = len(nodeIDs_l)
-    assert nNl_face == element_type_to_nNl[config.element_type]
+    assert nNl_face == ELEMENT_TRAITS[config.element_type].nNl
     nodeIDs = mesh.elements[e, nodeIDs_l]
     x_l = mesh.nodes[nodeIDs, 0]
     y_l = mesh.nodes[nodeIDs, 1]
-    #We integrate loads with full integration even if the element stiffness matrix uses reduced integration.
-    nGauss_1D = shape_functions.element_type_to_nGauss_1D[element_type] + element_uses_reduced_integration[element_type]
+    #Loads are always fully integrated (as many Gauss points as nodes along an edge), also for R elements
+    nGauss_1D = ELEMENT_TRAITS[element_type].nNl_1D
     arr_xi = shape_functions.get_arr_xi(nGauss_1D)
     arr_w = shape_functions.get_arr_w(nGauss_1D)
     #We make the load vector contain all 3 dofs w,thetax, thetay, even though we only fill the w dofs
@@ -270,10 +258,10 @@ def integrate_element_face_load_plate(config: Config, mesh: Mesh, load: Load, no
             x_Gauss = N @ x_l
             y_Gauss = N @ y_l
 
-            if load.load_type == LOAD_TYPE_PRESSURE:
+            if load.load_type == LoadType.PRESSURE:
                 p = evaluate_scalar_load(load, x_Gauss, y_Gauss)
             else:
-                assert load.load_type == LOAD_TYPE_BODY_FORCE
+                assert load.load_type == LoadType.BODY_FORCE
                 b = evaluate_scalar_load(load, x_Gauss, y_Gauss)
                 p = h * b  #We convert the body force to a pressure by multiplying with thickness
 
@@ -283,15 +271,15 @@ def integrate_element_face_load_plate(config: Config, mesh: Mesh, load: Load, no
 
 
 def integrate_element_edge_load_plate(config: Config, mesh: Mesh, load: Load, nodeIDs_l, e):
-    assert config.problem_type == PROBLEM_TYPE_PLATE
+    assert config.problem_type == ProblemType.PLATE
     element_type = config.element_type
     h = config.h
     nNl_edge = len(nodeIDs_l)
     nodeIDs = mesh.elements[e, nodeIDs_l]
     x_edge = mesh.nodes[nodeIDs, 0]
     y_edge = mesh.nodes[nodeIDs, 1]
-    #We integrate loads with full integration even if the element uses reduced integration.
-    nGauss = shape_functions.element_type_to_nGauss_1D[element_type] + element_uses_reduced_integration[element_type]
+    #Loads are always fully integrated (as many Gauss points as nodes along an edge), also for R elements
+    nGauss = ELEMENT_TRAITS[element_type].nNl_1D
     arr_xi = shape_functions.get_arr_xi(nGauss)
     arr_w = shape_functions.get_arr_w(nGauss)
     #We specify an empty load vector containing all dofs w,thetax,thetaz, allthough the two latter will remain zero
@@ -315,26 +303,24 @@ def integrate_element_edge_load_plate(config: Config, mesh: Mesh, load: Load, no
         #We only accept traction loads for the edge loads of the plates.
         #However this traction function should return a single value.
         #In global 3D space we assume the traction has the form t = t_z * [0, 0, 1]^T, and we only provide t_z
-        assert load.load_type == LOAD_TYPE_TRACTION
+        assert load.load_type == LoadType.TRACTION
         t_z = evaluate_scalar_load(load, x_Gauss, y_Gauss)
 
         R_load[0::3] += t_z * N * detJ * w * h  #This traction load only acts in the z direction
     return R_load
 
 
-def integrate_element_load(config: Config, mesh: Mesh, load: Load, nodeIDs_l, e, geometry_type):
-    if config.problem_type == PROBLEM_TYPE_PLANE_STRESS:
-        if geometry_type == ELEMENT_GEOMETRY_TYPE_FACE:
+def integrate_element_load(config: Config, mesh: Mesh, load: Load, nodeIDs_l, e, element_entity):
+    if config.problem_type == ProblemType.PLANE_STRESS:
+        if element_entity == ElementEntity.FACE:
             R_load = integrate_element_face_load_plane_stress(config, mesh, load, nodeIDs_l, e)
         else:
-            assert geometry_type == ELEMENT_GEOMETRY_TYPE_EDGE
             R_load = integrate_element_edge_load_plane_stress(config, mesh, load, nodeIDs_l, e)
     else:
-        assert config.problem_type == PROBLEM_TYPE_PLATE
-        if geometry_type == ELEMENT_GEOMETRY_TYPE_FACE:
+        assert config.problem_type == ProblemType.PLATE
+        if element_entity == ElementEntity.FACE:
             R_load = integrate_element_face_load_plate(config, mesh, load, nodeIDs_l, e)
         else:
-            assert geometry_type == ELEMENT_GEOMETRY_TYPE_EDGE
             R_load = integrate_element_edge_load_plate(config, mesh, load, nodeIDs_l, e)
 
     return R_load
@@ -344,13 +330,12 @@ def assemble_loads_consistent(config: Config, mesh: Mesh, solver_data: SolverDat
 
     element_sets = mesh.element_sets
     elements = mesh.elements
-    element_traits = QuadElementTraits(config.element_type)
+    element_traits = ELEMENT_TRAITS[config.element_type]
 
     for load in config.loads:
         element_set = element_sets[load.element_set_name]
         element_entity = element_set.element_entity
-        geometry_type = element_entity_to_geometry_type[element_entity]
-        nodeIDs_l = element_traits.get_nodeIDs_from_element_entity(element_entity)
+        nodeIDs_l = element_traits.entity_nodes[element_entity]  #The element nodes on the edge or face
         nNl_ent = len(nodeIDs_l)
         NUM_DOFS = get_num_dofs_from_problem_type(config.problem_type)
 
@@ -359,7 +344,7 @@ def assemble_loads_consistent(config: Config, mesh: Mesh, solver_data: SolverDat
             #====================================================================
             # Integrate consistent load for the element in question
             #====================================================================
-            R_load = integrate_element_load(config, mesh, load, nodeIDs_l, e, geometry_type)
+            R_load = integrate_element_load(config, mesh, load, nodeIDs_l, e, element_entity)
 
             #====================================================================
             # Assemble contribution into the external force vector R_ext

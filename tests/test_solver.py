@@ -16,7 +16,7 @@ from fem.useful_imports import *
 
 # Q9R (Q9 with 2x2 Gauss points) has spurious zero energy modes that are not
 # suppressed in a small patch, which makes the system singular. See the tests below.
-PATCH_TEST_ELEMENT_TYPES = [et for et in ALL_ELEMENT_TYPES if et != ELEMENT_TYPE_Q9R]
+PATCH_TEST_ELEMENT_TYPES = [et for et in ALL_ELEMENT_TYPES if et != ElementType.Q9R]
 
 
 @pytest.mark.parametrize("element_type", PATCH_TEST_ELEMENT_TYPES, ids=element_name)
@@ -24,11 +24,11 @@ def test_patch_test_uniaxial_tension_on_distorted_mesh(element_type):
     """A plate pulled by the traction sigma0 on the east edge. The exact solution is
     u = sigma0 * x / E, v = -nu * sigma0 * y / E, and the stress is (sigma0, 0, 0) everywhere."""
     E, nu, sigma0 = 100.0, 0.25, 3.0
-    config = create_config(E, nu, 1.0, element_type, PROBLEM_TYPE_PLANE_STRESS)
+    config = create_config(E, nu, 1.0, element_type, ProblemType.PLANE_STRESS)
     mesh = create_structured_quad_mesh(config, 2.0, 1.0, 3, 3, perturb_mesh_nodes_factor=0.8)
-    add_boundary_condition(config, mesh, "west", DOF_U, 0)
-    add_boundary_condition(config, mesh, "south_west", DOF_V, 0)
-    add_load(config, mesh, "east", LOAD_TYPE_TRACTION, lambda x, y: (sigma0, 0.0))
+    add_boundary_condition(config, mesh, "west", Dof.U, 0)
+    add_boundary_condition(config, mesh, "south_west", Dof.V, 0)
+    add_load(config, mesh, "east", LoadType.TRACTION, lambda x, y: (sigma0, 0.0))
     solver_data = create_solver_data(config, mesh)
     solve(config, solver_data, mesh)
 
@@ -50,17 +50,17 @@ def count_zero_energy_modes(Ke):
 
 
 def single_element_plane_stress_stiffness(element_type, hourglass_scaling=None):
-    config = create_config(1.0, 0.3, 1.0, element_type, PROBLEM_TYPE_PLANE_STRESS)
+    config = create_config(1.0, 0.3, 1.0, element_type, ProblemType.PLANE_STRESS)
     if hourglass_scaling is not None:
         config.hourglass_scaling = hourglass_scaling
     mesh = create_structured_quad_mesh(config, 1.0, 1.0, 1, 1)
     Ke = element_stiffness.calc_Ke_plane_stress(config, mesh, 0)
-    if element_type == ELEMENT_TYPE_Q4R:
+    if element_type == ElementType.Q4R:
         Ke += element_stiffness.calc_Ke_hourglass_plane_stress_Q4R(config, mesh, 0)
     return Ke
 
 
-@pytest.mark.parametrize("element_type", [ELEMENT_TYPE_Q4, ELEMENT_TYPE_Q8, ELEMENT_TYPE_Q9, ELEMENT_TYPE_Q16],
+@pytest.mark.parametrize("element_type", [ElementType.Q4, ElementType.Q8, ElementType.Q9, ElementType.Q16],
                          ids=element_name)
 def test_element_has_only_rigid_body_zero_energy_modes(element_type):
     """A single element in 2D has 3 rigid body modes (two translations and one rotation)."""
@@ -71,19 +71,19 @@ def test_element_has_only_rigid_body_zero_energy_modes(element_type):
 def test_Q8R_has_one_spurious_zero_energy_mode():
     """With 2x2 Gauss points, Q8 has 1 spurious zero energy mode. It cannot spread between
     neighbouring elements, so it is usually harmless in a mesh."""
-    assert count_zero_energy_modes(single_element_plane_stress_stiffness(ELEMENT_TYPE_Q8R)) == 4
+    assert count_zero_energy_modes(single_element_plane_stress_stiffness(ElementType.Q8R)) == 4
 
 
 def test_Q4R_needs_hourglass_stabilization():
     """With one Gauss point, Q4 has 2 spurious zero energy (hourglass) modes in addition to
     the 3 rigid body modes. The hourglass stiffness removes them."""
-    assert count_zero_energy_modes(single_element_plane_stress_stiffness(ELEMENT_TYPE_Q4R, 0.0)) == 5
-    assert count_zero_energy_modes(single_element_plane_stress_stiffness(ELEMENT_TYPE_Q4R, 0.1)) == 3
+    assert count_zero_energy_modes(single_element_plane_stress_stiffness(ElementType.Q4R, 0.0)) == 5
+    assert count_zero_energy_modes(single_element_plane_stress_stiffness(ElementType.Q4R, 0.1)) == 3
 
 
 def test_Q9R_has_spurious_zero_energy_modes():
     """With 2x2 Gauss points, Q9 has 3 spurious zero energy modes in addition to the 3 rigid body modes."""
-    assert count_zero_energy_modes(single_element_plane_stress_stiffness(ELEMENT_TYPE_Q9R)) == 6
+    assert count_zero_energy_modes(single_element_plane_stress_stiffness(ElementType.Q9R)) == 6
 
 
 #====================================================================
@@ -95,12 +95,12 @@ def test_Q9R_has_spurious_zero_energy_modes():
 def solve_rectangle_in_tension(element_type, fix_v=True):
     """u = 0 on the west edge and v = 0 at the south-west corner: Just enough to prevent rigid body
     motion. Without the corner condition (fix_v=False), the body can move freely in the y-direction."""
-    config = create_config(100.0, 0.25, 1.0, element_type, PROBLEM_TYPE_PLANE_STRESS)
+    config = create_config(100.0, 0.25, 1.0, element_type, ProblemType.PLANE_STRESS)
     mesh = create_structured_quad_mesh(config, 2.0, 1.0, 3, 3)
-    add_boundary_condition(config, mesh, "west", DOF_U, 0)
+    add_boundary_condition(config, mesh, "west", Dof.U, 0)
     if fix_v:
-        add_boundary_condition(config, mesh, "south_west", DOF_V, 0)
-    add_load(config, mesh, "east", LOAD_TYPE_TRACTION, lambda x, y: (3.0, 0.0))
+        add_boundary_condition(config, mesh, "south_west", Dof.V, 0)
+    add_load(config, mesh, "east", LoadType.TRACTION, lambda x, y: (3.0, 0.0))
     solver_data = create_solver_data(config, mesh)
     solve(config, solver_data, mesh)
 
@@ -108,10 +108,10 @@ def solve_rectangle_in_tension(element_type, fix_v=True):
 @pytest.mark.parametrize(
     "solve_problem",
     [
-        lambda: solve_rectangle_in_tension(ELEMENT_TYPE_Q4, fix_v=False),
-        lambda: solve_rectangle_in_tension(ELEMENT_TYPE_Q9R),
-        lambda: solve_square_plate(ELEMENT_TYPE_Q9R, 4),
-        lambda: solve_square_plate(ELEMENT_TYPE_Q4R, 4),  # Q4R only has hourglass stabilization for plane stress
+        lambda: solve_rectangle_in_tension(ElementType.Q4, fix_v=False),
+        lambda: solve_rectangle_in_tension(ElementType.Q9R),
+        lambda: solve_square_plate(ElementType.Q9R, 4),
+        lambda: solve_square_plate(ElementType.Q4R, 4),  # Q4R only has hourglass stabilization for plane stress
     ],
     ids=["missing boundary condition", "Q9R plane stress", "Q9R plate", "Q4R plate"])
 def test_singular_system_gives_a_warning(solve_problem, capsys):
@@ -122,9 +122,9 @@ def test_singular_system_gives_a_warning(solve_problem, capsys):
 @pytest.mark.parametrize("element_type", ALL_ELEMENT_TYPES, ids=element_name)
 def test_well_posed_problems_give_no_warning(element_type, capsys):
     solve_cantilever(element_type, 4, 2)
-    if element_type != ELEMENT_TYPE_Q9R:  #Singular with these supports (see above)
+    if element_type != ElementType.Q9R:  #Singular with these supports (see above)
         solve_rectangle_in_tension(element_type)
-    if element_type not in [ELEMENT_TYPE_Q4R, ELEMENT_TYPE_Q9R]:  #Singular for this plate (see above)
+    if element_type not in [ElementType.Q4R, ElementType.Q9R]:  #Singular for this plate (see above)
         solve_square_plate(element_type, 4)
     assert "singular" not in capsys.readouterr().out
 
@@ -154,7 +154,7 @@ def test_reaction_forces_balance_the_external_forces(element_type):
     assert np.isclose(np.sum(Ry_reaction), 1000.0)  #The reaction must carry the whole tip force
 
 
-@pytest.mark.parametrize("element_type, nEx, nEy", [(ELEMENT_TYPE_Q9, 40, 4), (ELEMENT_TYPE_Q16, 20, 4)],
+@pytest.mark.parametrize("element_type, nEx, nEy", [(ElementType.Q9, 40, 4), (ElementType.Q16, 20, 4)],
                          ids=["Q9", "Q16"])
 def test_cantilever_tip_deflection_matches_timoshenko_beam_theory(element_type, nEx, nEy):
     Lx, Ly, h, E, nu, P = 10.0, 1.0, 1.0, 210e9, 0.3, 1000.0
@@ -175,7 +175,7 @@ def test_thin_square_plate_center_deflection_matches_kirchhoff_theory(clamped, k
     """Q16 is used since it is practically free of shear locking at this mesh size. (Q9 also converges,
     but needs a finer mesh for the clamped case: 0.956 of the Kirchhoff value with 8x8 elements.)"""
     L, h, E, nu, q = 1.0, 0.01, 200e9, 0.3, 1000.0
-    config, mesh, solver_data = solve_square_plate(ELEMENT_TYPE_Q16, 8, L, h, E, nu, q, clamped)
+    config, mesh, solver_data = solve_square_plate(ElementType.Q16, 8, L, h, E, nu, q, clamped)
     w, thetax, thetay = unpack_solution(config, solver_data.r)
     w_center = w[find_node_closest_to(mesh, L / 2, L / 2)]
 
@@ -188,7 +188,7 @@ def test_fully_integrated_Q4_plate_locks_in_shear():
     """This is expected behaviour (shear locking), and an important teaching point. The test makes sure
     that nobody "fixes" it by accident."""
     L, h, E, nu, q = 1.0, 0.01, 200e9, 0.3, 1000.0
-    config, mesh, solver_data = solve_square_plate(ELEMENT_TYPE_Q4, 8, L, h, E, nu, q)
+    config, mesh, solver_data = solve_square_plate(ElementType.Q4, 8, L, h, E, nu, q)
     w, thetax, thetay = unpack_solution(config, solver_data.r)
     w_center = w[find_node_closest_to(mesh, L / 2, L / 2)]
     D = E * h**3 / (12 * (1 - nu**2))
@@ -204,23 +204,23 @@ def test_fully_integrated_Q4_plate_locks_in_shear():
 #====================================================================
 
 CANTILEVER_TIP_DEFLECTION_10x2 = {
-    ELEMENT_TYPE_Q4: -1.354490448807078e-05,
-    ELEMENT_TYPE_Q4R: -2.483368223649329e-05,
-    ELEMENT_TYPE_Q8: -1.909204564461871e-05,
-    ELEMENT_TYPE_Q8R: -1.9117520431254024e-05,
-    ELEMENT_TYPE_Q9: -1.9117848142803338e-05,
-    ELEMENT_TYPE_Q9R: -1.9159532179316214e-05,
-    ELEMENT_TYPE_Q16: -1.914770054896495e-05,
+    ElementType.Q4: -1.354490448807078e-05,
+    ElementType.Q4R: -2.483368223649329e-05,
+    ElementType.Q8: -1.909204564461871e-05,
+    ElementType.Q8R: -1.9117520431254024e-05,
+    ElementType.Q9: -1.9117848142803338e-05,
+    ElementType.Q9R: -1.9159532179316214e-05,
+    ElementType.Q16: -1.914770054896495e-05,
 }
 
 # Q4R and Q9R are left out: The simply supported plate is singular with these elements
 # (see test_singular_system_gives_a_warning), so their results depend on round-off errors.
 PLATE_CENTER_DEFLECTION_4x4 = {
-    ELEMENT_TYPE_Q4: -2.4374421611534405e-06,
-    ELEMENT_TYPE_Q8: -0.00020393378935936916,
-    ELEMENT_TYPE_Q8R: -0.0002262780345961578,
-    ELEMENT_TYPE_Q9: -0.00021774214739001354,
-    ELEMENT_TYPE_Q16: -0.00022243574839503469,
+    ElementType.Q4: -2.4374421611534405e-06,
+    ElementType.Q8: -0.00020393378935936916,
+    ElementType.Q8R: -0.0002262780345961578,
+    ElementType.Q9: -0.00021774214739001354,
+    ElementType.Q16: -0.00022243574839503469,
 }
 
 

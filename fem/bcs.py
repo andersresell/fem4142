@@ -7,32 +7,28 @@ from fem.fem_utils import *
 
 def add_boundary_condition(config: Config, mesh: Mesh, node_set_name, dof, value=0):
     """Adds a prescribed boundary condition for a certain dof to a node set.
-        For instance, if node_set_name is "west", dof is DOF_U, and value is 0, 
-        all nodes in the "west" node set will have their x-displacement (DOF_U) set to 0.
+        For instance, if node_set_name is "west", dof is Dof.U, and value is 0,
+        all nodes in the "west" node set will have their x-displacement (Dof.U) set to 0.
     """
     node_sets = mesh.node_sets
-    bcs = config.bcs
 
     if node_set_name not in node_sets:
         all_node_set_names = ", ".join(
             node_sets.keys())  #Find all available node set names to display in the error message
         raise Exception(f"Node set '{node_set_name}' not found. Available: {all_node_set_names}")
 
-    if config.problem_type == PROBLEM_TYPE_PLANE_STRESS:
-        if dof != DOF_U and dof != DOF_V:
-            raise Exception(f"dof {dof} is not valid for {problem_type_to_string[config.problem_type]} "
-                            f"(valid dofs are: DOF_U={DOF_U}, DOF_V={DOF_V})")
+    dof = Dof(dof)  #Gives a clear error message if the dof is not valid
+    if config.problem_type == ProblemType.PLANE_STRESS:
+        if dof != Dof.U and dof != Dof.V:
+            raise Exception(f"Dof.{dof.name} is not valid for {config.problem_type.name} "
+                            f"(valid dofs are Dof.U and Dof.V)")
     else:
-        assert config.problem_type == PROBLEM_TYPE_PLATE
-        if dof != DOF_W and dof != DOF_THETAX and dof != DOF_THETAY:
-            raise Exception(f"dof {dof} is not valid for {problem_type_to_string[config.problem_type]} "
-                            f"(valid dofs are: DOF_W={DOF_W}, DOF_THETAX={DOF_THETAX}, DOF_THETAY={DOF_THETAY})")
+        assert config.problem_type == ProblemType.PLATE
+        if dof != Dof.W and dof != Dof.THETAX and dof != Dof.THETAY:
+            raise Exception(f"Dof.{dof.name} is not valid for {config.problem_type.name} "
+                            f"(valid dofs are Dof.W, Dof.THETAX and Dof.THETAY)")
 
-    bc = BC()
-    bc.value = value
-    bc.node_set_name = node_set_name
-    bc.dof = dof
-    bcs.append(bc)
+    config.bcs.append(BC(node_set_name, dof, value))
 
 
 def assign_boundary_conditions(config: Config, mesh: Mesh, solver_data: SolverData):

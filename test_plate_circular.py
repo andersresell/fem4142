@@ -8,7 +8,7 @@ if __name__ == "__main__":
     Lx = R
     Ly = R
     q = -1e6
-    problem_type = PROBLEM_TYPE_PLATE
+    problem_type = ProblemType.PLATE
     nEx = 4
     nEy = 4
     thickness_ratios = np.logspace(1, 6, 10)
@@ -20,34 +20,34 @@ if __name__ == "__main__":
     plt.figure()
 
     element_types = [
-        ELEMENT_TYPE_Q4, ELEMENT_TYPE_Q4R, ELEMENT_TYPE_Q8R, ELEMENT_TYPE_Q8, ELEMENT_TYPE_Q9, ELEMENT_TYPE_Q16
+        ElementType.Q4, ElementType.Q4R, ElementType.Q8R, ElementType.Q8, ElementType.Q9, ElementType.Q16
     ]
 
-    element_types = [ELEMENT_TYPE_Q16]
+    element_types = [ElementType.Q16]
     for element_type in element_types:
         wc_over_wc_k = []
         for tr in thickness_ratios:
             h = R / tr
             config = create_config(E, nu, h, element_type, problem_type)
             mesh = create_structured_quad_mesh(config, Lx, Ly, nEx, nEy)
-            morph_mesh(mesh, "quarter_circle_north_east_quadrant")
+            morph_mesh(mesh, "quarter_circle")
 
             #model one quartrer of the plate
-            add_boundary_condition(config, mesh, "west", DOF_THETAY, 0)
-            add_boundary_condition(config, mesh, "south", DOF_THETAX, 0)
+            add_boundary_condition(config, mesh, "west", Dof.THETAY, 0)
+            add_boundary_condition(config, mesh, "south", Dof.THETAX, 0)
 
             #Clamp the real boundaries
-            add_boundary_condition(config, mesh, "east", DOF_W, 0)
+            add_boundary_condition(config, mesh, "east", Dof.W, 0)
             if clamped:
-                add_boundary_condition(config, mesh, "east", DOF_THETAX, 0)
-                add_boundary_condition(config, mesh, "east", DOF_THETAY, 0)
-            add_boundary_condition(config, mesh, "north", DOF_W, 0)
+                add_boundary_condition(config, mesh, "east", Dof.THETAX, 0)
+                add_boundary_condition(config, mesh, "east", Dof.THETAY, 0)
+            add_boundary_condition(config, mesh, "north", Dof.W, 0)
             if clamped:
-                add_boundary_condition(config, mesh, "north", DOF_THETAX, 0)
-                add_boundary_condition(config, mesh, "north", DOF_THETAY, 0)
+                add_boundary_condition(config, mesh, "north", Dof.THETAX, 0)
+                add_boundary_condition(config, mesh, "north", Dof.THETAY, 0)
 
             load_func = lambda x, y: q
-            add_load(config, mesh, "domain", LOAD_TYPE_PRESSURE, load_func)
+            add_load(config, mesh, "domain", LoadType.PRESSURE, load_func)
 
             solver_data = create_solver_data(config, mesh)
             solve(config, solver_data, mesh)
@@ -64,7 +64,7 @@ if __name__ == "__main__":
             wc = w[center_node_index]
             #  assert np.isclose(w_max, wc), f"Max deflection {w_max} not at center but {wc}"
 
-            print(f"Element type: {element_type_to_str[element_type]}, R/h: {tr:.1f}, wc: {wc:.6e} m")
+            print(f"Element type: {element_type.name}, R/h: {tr:.1f}, wc: {wc:.6e} m")
 
             D = E * h**3 / (12 * (1 - nu**2))
             if clamped:
@@ -75,7 +75,7 @@ if __name__ == "__main__":
             wc_over_wc_k.append(wc / wc_k)
 
             Plot(config, mesh, solver_data)
-        plt.plot(thickness_ratios, wc_over_wc_k, '.-', label=element_type_to_str[element_type])
+        plt.plot(thickness_ratios, wc_over_wc_k, '.-', label=element_type.name)
     if clamped:
         plt.title(
             f"Clamped circular plate, center deflection over Kirchhoff solution\n{nEx}x{nEy} elements per quarter plate"

@@ -8,7 +8,7 @@ if __name__ == "__main__":
     Lx = L / 2
     Ly = L / 2
     q = -1e6
-    problem_type = PROBLEM_TYPE_PLATE
+    problem_type = ProblemType.PLATE
     nEx = 4
     nEy = 4
     plot_and_interrupt = True
@@ -21,10 +21,10 @@ if __name__ == "__main__":
     plt.figure()
 
     element_types = [
-        ELEMENT_TYPE_Q4, ELEMENT_TYPE_Q4R, ELEMENT_TYPE_Q8R, ELEMENT_TYPE_Q8, ELEMENT_TYPE_Q9, ELEMENT_TYPE_Q16
+        ElementType.Q4, ElementType.Q4R, ElementType.Q8R, ElementType.Q8, ElementType.Q9, ElementType.Q16
     ]
-    element_types = [ELEMENT_TYPE_Q4R, ELEMENT_TYPE_Q4, ELEMENT_TYPE_Q8, ELEMENT_TYPE_Q16]
-    # element_types = [ELEMENT_TYPE_Q9]
+    element_types = [ElementType.Q4R, ElementType.Q4, ElementType.Q8, ElementType.Q16]
+    # element_types = [ElementType.Q9]
     for element_type in element_types:
         wc_over_wc_k = []
         for tr in thickness_ratios:
@@ -33,19 +33,19 @@ if __name__ == "__main__":
             mesh = create_structured_quad_mesh(config, Lx, Ly, nEx, nEy)
 
             #model one quartrer of the plate
-            add_boundary_condition(config, mesh, "west", DOF_THETAY, 0)
-            add_boundary_condition(config, mesh, "south", DOF_THETAX, 0)
+            add_boundary_condition(config, mesh, "west", Dof.THETAY, 0)
+            add_boundary_condition(config, mesh, "south", Dof.THETAX, 0)
 
             #Clamp the real boundaries
-            add_boundary_condition(config, mesh, "east", DOF_W, 0)
-            add_boundary_condition(config, mesh, "east", DOF_THETAX, 0)
-            add_boundary_condition(config, mesh, "east", DOF_THETAY, 0)
-            add_boundary_condition(config, mesh, "north", DOF_W, 0)
-            add_boundary_condition(config, mesh, "north", DOF_THETAX, 0)
-            add_boundary_condition(config, mesh, "north", DOF_THETAY, 0)
+            add_boundary_condition(config, mesh, "east", Dof.W, 0)
+            add_boundary_condition(config, mesh, "east", Dof.THETAX, 0)
+            add_boundary_condition(config, mesh, "east", Dof.THETAY, 0)
+            add_boundary_condition(config, mesh, "north", Dof.W, 0)
+            add_boundary_condition(config, mesh, "north", Dof.THETAX, 0)
+            add_boundary_condition(config, mesh, "north", Dof.THETAY, 0)
 
             load_func = lambda x, y: q
-            add_load(config, mesh, "domain", LOAD_TYPE_PRESSURE, load_func)
+            add_load(config, mesh, "domain", LoadType.PRESSURE, load_func)
 
             solver_data = create_solver_data(config, mesh)
             solve(config, solver_data, mesh)
@@ -62,14 +62,14 @@ if __name__ == "__main__":
             wc = w[center_node_index]
             assert np.isclose(w_max, wc), f"Max deflection {w_max} not at center but {wc}"
 
-            print(f"Element type: {element_type_to_str[element_type]}, L/h: {tr:.1f}, wc: {wc:.6e} m")
+            print(f"Element type: {element_type.name}, L/h: {tr:.1f}, wc: {wc:.6e} m")
 
             D = E * h**3 / (12 * (1 - nu**2))
             wc_k = 0.00126 * abs(q) * L**4 / D
             wc_over_wc_k.append(wc / wc_k)
             if plot_and_interrupt:
                 Plot(config, mesh, solver_data)
-        plt.plot(thickness_ratios, wc_over_wc_k, '.-', label=element_type_to_str[element_type])
+        plt.plot(thickness_ratios, wc_over_wc_k, '.-', label=element_type.name)
 
     plt.title(f"Clamped plate, center deflection over Kirchhoff solution\n{nEx}x{nEy} elements per quarter plate")
 

@@ -8,8 +8,8 @@ if __name__ == "__main__":
     Lx = 10  #Length in x-direction
     Ly = Lx / 10  #Length in y-direction
     q = 1000  #Line load applied to the top edge
-    element_type = ELEMENT_TYPE_Q16  #Use quadrilateral element
-    problem_type = PROBLEM_TYPE_PLANE_STRESS  #Specify that a plane stress problem is solved
+    element_type = ElementType.Q16  #Use quadrilateral element
+    problem_type = ProblemType.PLANE_STRESS  #Specify that a plane stress problem is solved
     nEx = 10  #Number of elements in x-direction
     nEy = 1  #Number of elements in y-direction
 
@@ -30,19 +30,19 @@ if __name__ == "__main__":
     #====================================================================
     # Add fixed boundary condition  to the left edge called "west"
     #====================================================================
-    add_boundary_condition(config, mesh, "west", DOF_U, 0)
-    add_boundary_condition(config, mesh, "south_west", DOF_V, 0)
+    add_boundary_condition(config, mesh, "west", Dof.U, 0)
+    add_boundary_condition(config, mesh, "south_west", Dof.V, 0)
 
-    # add_boundary_condition(config, mesh, "east", DOF_U, 0)
-    # add_boundary_condition(config, mesh, "east", DOF_V, 1)
+    # add_boundary_condition(config, mesh, "east", Dof.U, 0)
+    # add_boundary_condition(config, mesh, "east", Dof.V, 1)
     #====================================================================
     # Assign a uniform pressure load on the top edge named "north"
     #====================================================================
     load_func = lambda x, y: p0
-    add_load(config, mesh, "north", LOAD_TYPE_PRESSURE, load_func)
+    add_load(config, mesh, "north", LoadType.PRESSURE, load_func)
 
     # load_func = lambda x, y: (0, -p0)
-    # add_load(config, mesh, "east", LOAD_TYPE_TRACTION, load_func)
+    # add_load(config, mesh, "east", LoadType.TRACTION, load_func)
 
     #====================================================================
     # Create objects holding system matrices and vectors. Then assemble

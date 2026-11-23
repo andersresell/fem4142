@@ -40,11 +40,12 @@ def calc_dNdxi_1D(xi, nNl_1d):
 
 
 def calc_N_lagrangian(xi, eta, element_type):
-    assert element_type_to_category(element_type) == ELEMENT_CATEGORY_LAGRANGIAN
-    nNl = element_type_to_nNl[element_type]
-    nNl_1d = element_type_to_nNl_1D[element_type]
+    element_traits = ELEMENT_TRAITS[element_type]
+    assert element_traits.category == ElementCategory.LAGRANGIAN
+    nNl = element_traits.nNl
+    nNl_1d = element_traits.nNl_1D
     N = np.zeros(nNl)
-    il_to_ij_loc = il_to_ij_loc_all[element_type]
+    il_to_ij_loc = element_traits.il_to_ij
     N1D_xi = calc_N_1D(xi, nNl_1d)
     N1D_eta = calc_N_1D(eta, nNl_1d)
     for il in range(nNl):
@@ -55,12 +56,13 @@ def calc_N_lagrangian(xi, eta, element_type):
 
 
 def calc_dNdxi_dNdeta_lagrangian(xi, eta, element_type):
-    assert element_type_to_category(element_type) == ELEMENT_CATEGORY_LAGRANGIAN
-    nNl = element_type_to_nNl[element_type]
-    nNl_1d = element_type_to_nNl_1D[element_type]
+    element_traits = ELEMENT_TRAITS[element_type]
+    assert element_traits.category == ElementCategory.LAGRANGIAN
+    nNl = element_traits.nNl
+    nNl_1d = element_traits.nNl_1D
     dNdxi = np.zeros(nNl)
     dNdeta = np.zeros(nNl)
-    il_to_ij_loc = il_to_ij_loc_all[element_type]
+    il_to_ij_loc = element_traits.il_to_ij
     N1D_xi = calc_N_1D(xi, nNl_1d)
     N1D_eta = calc_N_1D(eta, nNl_1d)
     dN1D_dxi = calc_dNdxi_1D(xi, nNl_1d)
@@ -74,10 +76,10 @@ def calc_dNdxi_dNdeta_lagrangian(xi, eta, element_type):
 
 
 def calc_N_serendipity(xi, eta, element_type):
-    assert element_type_to_category(element_type) == ELEMENT_CATEGORY_SERENDIPITY
-    nNl = element_type_to_nNl[element_type]
+    assert ELEMENT_TRAITS[element_type].category == ElementCategory.SERENDIPITY
+    nNl = ELEMENT_TRAITS[element_type].nNl
     N = np.zeros(nNl)
-    if element_type == ELEMENT_TYPE_Q8 or element_type == ELEMENT_TYPE_Q8R:
+    if element_type == ElementType.Q8 or element_type == ElementType.Q8R:
         N[0] = 0.25 * (1 - xi) * (1 - eta) * (-xi - eta - 1)
         N[1] = 0.25 * (1 + xi) * (1 - eta) * (xi - eta - 1)
         N[2] = 0.25 * (1 + xi) * (1 + eta) * (xi + eta - 1)
@@ -92,11 +94,11 @@ def calc_N_serendipity(xi, eta, element_type):
 
 
 def calc_dNdxi_dNdeta_serendipity(xi, eta, element_type):
-    assert element_type_to_category(element_type) == ELEMENT_CATEGORY_SERENDIPITY
-    nNl = element_type_to_nNl[element_type]
+    assert ELEMENT_TRAITS[element_type].category == ElementCategory.SERENDIPITY
+    nNl = ELEMENT_TRAITS[element_type].nNl
     dNdxi = np.zeros(nNl)
     dNdeta = np.zeros(nNl)
-    if element_type == ELEMENT_TYPE_Q8 or element_type == ELEMENT_TYPE_Q8R:
+    if element_type == ElementType.Q8 or element_type == ElementType.Q8R:
         #Obtained by symbolic differentiation (sympy)
         dNdxi[0] = 0.25 * (-eta - 2 * xi) * (eta - 1)
         dNdxi[1] = 0.25 * (eta - 1) * (eta - 2 * xi)
@@ -121,18 +123,16 @@ def calc_dNdxi_dNdeta_serendipity(xi, eta, element_type):
 
 
 def calc_N(xi, eta, element_type):
-    if element_type_to_category(element_type) == ELEMENT_CATEGORY_LAGRANGIAN:
+    if ELEMENT_TRAITS[element_type].category == ElementCategory.LAGRANGIAN:
         return calc_N_lagrangian(xi, eta, element_type)
     else:
-        assert element_type_to_category(element_type) == ELEMENT_CATEGORY_SERENDIPITY
         return calc_N_serendipity(xi, eta, element_type)
 
 
 def calc_dNdxi_dNdeta(xi, eta, element_type):
-    if element_type_to_category(element_type) == ELEMENT_CATEGORY_LAGRANGIAN:
+    if ELEMENT_TRAITS[element_type].category == ElementCategory.LAGRANGIAN:
         return calc_dNdxi_dNdeta_lagrangian(xi, eta, element_type)
     else:
-        assert element_type_to_category(element_type) == ELEMENT_CATEGORY_SERENDIPITY
         return calc_dNdxi_dNdeta_serendipity(xi, eta, element_type)
 
 

@@ -19,24 +19,24 @@ def gui_does_not_block(monkeypatch):
 
 
 def solved_plane_stress_problem():
-    config = create_config(210e9, 0.3, 1.0, ELEMENT_TYPE_Q9, PROBLEM_TYPE_PLANE_STRESS)
+    config = create_config(210e9, 0.3, 1.0, ElementType.Q9, ProblemType.PLANE_STRESS)
     mesh = create_structured_quad_mesh(config, 4.0, 1.0, 4, 2)
-    add_boundary_condition(config, mesh, "west", DOF_U, 0)
-    add_boundary_condition(config, mesh, "west", DOF_V, 0)
-    add_load(config, mesh, "north", LOAD_TYPE_PRESSURE, lambda x, y: 1000.0)
+    add_boundary_condition(config, mesh, "west", Dof.U, 0)
+    add_boundary_condition(config, mesh, "west", Dof.V, 0)
+    add_load(config, mesh, "north", LoadType.PRESSURE, lambda x, y: 1000.0)
     solver_data = create_solver_data(config, mesh)
     solve(config, solver_data, mesh)
     return config, mesh, solver_data
 
 
 def solved_plate_problem():
-    config = create_config(210e9, 0.3, 0.01, ELEMENT_TYPE_Q9, PROBLEM_TYPE_PLATE)
+    config = create_config(210e9, 0.3, 0.01, ElementType.Q9, ProblemType.PLATE)
     mesh = create_structured_quad_mesh(config, 1.0, 1.0, 3, 3)
-    add_boundary_condition(config, mesh, "west", DOF_W, 0)
-    add_boundary_condition(config, mesh, "west", DOF_THETAY, 0)
-    add_boundary_condition(config, mesh, "south", DOF_W, 0)
-    add_boundary_condition(config, mesh, "south", DOF_THETAX, 0)
-    add_load(config, mesh, "domain", LOAD_TYPE_PRESSURE, lambda x, y: 1000.0)
+    add_boundary_condition(config, mesh, "west", Dof.W, 0)
+    add_boundary_condition(config, mesh, "west", Dof.THETAY, 0)
+    add_boundary_condition(config, mesh, "south", Dof.W, 0)
+    add_boundary_condition(config, mesh, "south", Dof.THETAX, 0)
+    add_load(config, mesh, "domain", LoadType.PRESSURE, lambda x, y: 1000.0)
     solver_data = create_solver_data(config, mesh)
     solve(config, solver_data, mesh)
     return config, mesh, solver_data
@@ -97,11 +97,11 @@ def test_gui_shows_nan_results_without_crashing(contour_type, arrow_type):
 
 def test_arrows_with_nothing_to_draw():
     """No external forces, since the structure is only loaded by a prescribed displacement."""
-    config = create_config(210e9, 0.3, 1.0, ELEMENT_TYPE_Q4, PROBLEM_TYPE_PLANE_STRESS)
+    config = create_config(210e9, 0.3, 1.0, ElementType.Q4, ProblemType.PLANE_STRESS)
     mesh = create_structured_quad_mesh(config, 4.0, 1.0, 4, 2)
-    add_boundary_condition(config, mesh, "west", DOF_U, 0)
-    add_boundary_condition(config, mesh, "west", DOF_V, 0)
-    add_boundary_condition(config, mesh, "east", DOF_U, 0.01)
+    add_boundary_condition(config, mesh, "west", Dof.U, 0)
+    add_boundary_condition(config, mesh, "west", Dof.V, 0)
+    add_boundary_condition(config, mesh, "east", Dof.U, 0.01)
     solver_data = create_solver_data(config, mesh)
     solve(config, solver_data, mesh)
     config.arrow_type = "external forces"

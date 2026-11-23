@@ -1,94 +1,73 @@
+from dataclasses import dataclass, field
+from typing import Callable
 from fem.fem_utils import *
-from typing import List
+
+#====================================================================
+# The classes below are dataclasses: Simple containers of data (like
+# a struct in C). Python creates the constructor automatically from
+# the listed fields, e.g. BC(node_set_name, dof, value).
+#====================================================================
 
 
+@dataclass
 class BC:
-    """
-    Defines a boundary condition:
-    - node_set_name: Name of the node set to which the boundary condition applies
-    - value: The value to which the degree of freedom is set (e.g., displacement)
-    - dof: The degree of freedom that is prescribed (e.g., DOF_U, DOF_V for plane 
-    stress or DOF_W, DOF_THETAX, DOF_THETAY for plate problems)
-    """
-
-    def __init__(self):
-        self.node_set_name = None
-        self.value = None
-        self.dof = None
+    """A boundary condition that prescribes a degree of freedom for all nodes in a node set,
+    e.g. u = 0 for the node set "west". Created by add_boundary_condition()."""
+    node_set_name: str  #Name of the node set that the boundary condition applies to
+    dof: Dof  #The prescribed degree of freedom, e.g. Dof.U
+    value: float  #The prescribed value
 
 
+@dataclass
 class Load:
-    """
-    Defines a load that can be applied to the mesh. Can be used both for plane stress and plate problems and it
-    can define both surface loads (like traction or pressure) and body forces (like gravity). The element set will define
-    if the load is applied to a surface or a volume.
-    - element_set_name: Name of the element set to which the load applies
-    - load_type: Type of load, e.g., "traction", "pressure", "gravity".
-    - load_function: A lambda function that calculates the load as a function of position.
-                     For example, a traction (2D) or pressure (scalar) for plane stress or a pressure (scalar) for 
-                     plate problems.
-    
-    Example when the problem type is plane stress:
-    load = Load()
-    load.element_set_name = "west"
-    load.load_function = lambda x, y: np.array([10, -1000*x])  # Traction in x and y direction
-    """
-
-    def __init__(self):
-        self.element_set_name = None
-        self.load_type = None
-        self.load_function = None
+    """A load on an element set. The element set defines if the load acts on edges (e.g. a traction or
+    pressure) or on the face of the elements (e.g. a body force). Created by add_load()."""
+    element_set_name: str  #Name of the element set that the load applies to
+    load_type: LoadType  #E.g. LoadType.TRACTION
+    load_function: Callable  #A function of (x, y) that returns the load, e.g. lambda x, y: (10, -1000 * x)
 
 
+@dataclass
 class Config:
-    """Configuration struct that holds all the parameters and settings for the simulation and plotting."""
+    """Holds all the parameters and settings for the simulation and plotting. Created by create_config()."""
 
-    def __init__(self):
+    #====================================================================
+    # Problem settings
+    #====================================================================
+    E: float  #Young's modulus
+    nu: float  #Poisson's ratio
+    h: float  #Thickness
+    element_type: ElementType
+    problem_type: ProblemType  #Plane stress or plate problem
+    hourglass_scaling: float = 0.1  #Scaling factor for hourglass stabilization term in Q4R element
 
-        #====================================================================
-        # Problem settings
-        #====================================================================
-        self.E = None  #Young's modulus
-        self.nu = None  #Poisson's ratio
-        self.h = None  #Plate thickness
-        self.element_type = None  #Element type
-        self.problem_type = None  #Plane stress or plate problem
-        self.hourglass_scaling = 0.1  #Scaling factor for hourglass stabilization term in Q4R element
+    bcs: list[BC] = field(default_factory=list)  #List of boundary conditions (starts empty)
+    loads: list[Load] = field(default_factory=list)  #List of loads (starts empty)
 
-        self.bcs: List[BC] = []  #List of boundary conditions
-        self.loads: List[Load] = []  #List of loads
-
-        #====================================================================
-        # Plot settings
-        #====================================================================
-        self.show_mesh = True
-        self.disp_scaling = 1  #Scaling factor for displacements
-        self.show_node_labels = False
-        self.show_bcs = False
-        self.contour_type = "disp"  # Displacement or stress (default: "disp")
-        self.disp_component = "mag"  # Default displacement component to show
-        self.stress_component = "mises"  # Default stress component to show
-        self.arrow_type = "none"  # external forces, reaction forces, disp, none (default: "none")
-        self.node_scale = 1  #Scales nodes and node labels
-        self.arrow_scale = 1
-        self.specify_contour_limits = False
-        self.contour_min = 0
-        self.contour_max = 1
-        self.stress_reconstruction_method = STRESS_RECONSTRUCTION_CONSISTENT
+    #====================================================================
+    # Plot settings
+    #====================================================================
+    show_mesh: bool = True
+    disp_scaling: float = 1  #Scaling factor for displacements
+    show_node_labels: bool = False
+    show_bcs: bool = False
+    contour_type: str = "disp"  #"none", "disp" or "stress"
+    disp_component: str = "mag"  #Displacement component to show
+    stress_component: str = "mises"  #Stress component to show
+    arrow_type: str = "none"  #"none", "disp", "external forces" or "reaction forces"
+    node_scale: float = 1  #Scales nodes and node labels
+    arrow_scale: float = 1
+    specify_contour_limits: bool = False
+    contour_min: float = 0
+    contour_max: float = 1
 
 
 def create_config(E, nu, h, element_type, problem_type) -> Config:
-    config = Config()
-    config.E = E
-    config.nu = nu
-    config.h = h
-    config.element_type = element_type
-    config.problem_type = problem_type
+    #ElementType(...) and ProblemType(...) give a clear error message if the value is not valid
+    config = Config(E, nu, h, ElementType(element_type), ProblemType(problem_type))
 
     # Set problem-specific defaults
-    if problem_type == PROBLEM_TYPE_PLANE_STRESS:
-        config.disp_component = "mag"  # Default for plane stress
-    else:  # PROBLEM_TYPE_PLATE
-        config.disp_component = "w"  # Default for plate problems
+    if config.problem_type == ProblemType.PLATE:
+        config.disp_component = "w"
 
     return config

@@ -9,7 +9,7 @@ import matplotlib.colors as mcolors
 import matplotlib.lines as mlines
 from fem.fem_utils import *
 import fem.stress_recovery as stress_recovery
-from fem.mesh import Mesh, QuadElementTraits
+from fem.mesh import Mesh
 from fem.utils import Config
 from fem.solver_data import *
 import fem.shape_functions as shape_functions
@@ -74,13 +74,13 @@ class Plot:
             return vspace
 
         #Problem type specific options:
-        if config.problem_type == PROBLEM_TYPE_PLANE_STRESS:
+        if config.problem_type == ProblemType.PLANE_STRESS:
             contour_type_options = ['none', 'disp', 'stress']
             disp_component_options = ['mag', 'u', 'v']
             stress_component_options = ['mises', 'xx', 'yy', 'xy']
             arrow_options = ['none', 'disp', 'external forces', 'reaction forces']
         else:
-            assert config.problem_type == PROBLEM_TYPE_PLATE
+            assert config.problem_type == ProblemType.PLATE
             #Stress plotting is not implemented for plates yet, so that option is not shown
             contour_type_options = ['none', 'disp']
             disp_component_options = ['w', 'thetax', 'thetay']
@@ -271,7 +271,7 @@ class Plot:
         #====================================================================
         if config.contour_type == "none":
             self.cbar.ax.set_visible(False)
-        elif config.problem_type == PROBLEM_TYPE_PLANE_STRESS:
+        elif config.problem_type == ProblemType.PLANE_STRESS:
             if config.contour_type == "disp":
                 if config.disp_component == "mag":
                     self.cbar.set_label(r"$u^{\mathrm{mag}} = \sqrt{u^2 + v^2}$", fontsize=self.LABEL_FONTSIZE)
@@ -295,7 +295,7 @@ class Plot:
             else:
                 print(f"Error: Unknown contour type for plotting: {config.contour_type}")
         else:
-            assert config.problem_type == PROBLEM_TYPE_PLATE
+            assert config.problem_type == ProblemType.PLATE
             if config.contour_type == "disp":
                 if config.disp_component == "w":
                     self.cbar.set_label(r"$w$", fontsize=self.LABEL_FONTSIZE)
@@ -320,12 +320,12 @@ class Plot:
         # Plot nodes
         #====================================================================
         SCALE_NODES = 1
-        if config.problem_type == PROBLEM_TYPE_PLANE_STRESS:
+        if config.problem_type == ProblemType.PLANE_STRESS:
             u, v = unpack_solution(config, solver_data.r)
             x_nodes = mesh.nodes[:, 0] + config.disp_scaling * u
             y_nodes = mesh.nodes[:, 1] + config.disp_scaling * v
         else:
-            assert config.problem_type == PROBLEM_TYPE_PLATE
+            assert config.problem_type == ProblemType.PLATE
             x_nodes = mesh.nodes[:, 0]
             y_nodes = mesh.nodes[:, 1]
 
@@ -353,7 +353,7 @@ class Plot:
         # Plot arrow fields
         #====================================================================
         if config.arrow_type != "none":
-            if config.problem_type == PROBLEM_TYPE_PLANE_STRESS:
+            if config.problem_type == ProblemType.PLANE_STRESS:
                 show_max_norm = False
                 if config.arrow_type == "disp":
                     self.plot_arrows(x_nodes, y_nodes, u, v, "disp", "blue", domain_scale, config.arrow_scale)
@@ -376,11 +376,11 @@ class Plot:
         #====================================================================
         self.plot_bcs(config, mesh, x_nodes, y_nodes, domain_scale)
 
-        if config.problem_type == PROBLEM_TYPE_PLANE_STRESS:
-            fig.suptitle(f"Plane stress problem: {element_type_to_str[config.element_type]} element")
+        if config.problem_type == ProblemType.PLANE_STRESS:
+            fig.suptitle(f"Plane stress problem: {config.element_type.name} element")
         else:
-            assert config.problem_type == PROBLEM_TYPE_PLATE
-            fig.suptitle(f"Mindlin plate problem: {element_type_to_str[config.element_type]} element")
+            assert config.problem_type == ProblemType.PLATE
+            fig.suptitle(f"Mindlin plate problem: {config.element_type.name} element")
         self.ax.set_aspect('equal')
         self.ax.axis('equal')
         self.ax.set_xlabel(r"$x$", fontsize=self.LABEL_FONTSIZE)
@@ -497,7 +497,7 @@ class Plot:
         nodes = mesh.nodes
         elements = mesh.elements
         element_type = config.element_type
-        if config.problem_type == PROBLEM_TYPE_PLANE_STRESS:
+        if config.problem_type == ProblemType.PLANE_STRESS:
             u, v = unpack_solution(config, solver_data.r)
 
             for e in range(nE):
@@ -528,7 +528,6 @@ class Plot:
                         scalar_vert[I_vert] = scalar
 
             if config.contour_type == "stress":
-                assert config.stress_reconstruction_method == STRESS_RECONSTRUCTION_CONSISTENT
                 xi_eta = [self.xi_eta_viz(i, j) for i in range(num_quads_1D + 1) for j in range(num_quads_1D + 1)]
                 for e in range(nE):
                     sigma_E = stress_recovery.recover_stress_plane_stress_consistent(e, config, mesh, nodes, u, v, xi_eta)
@@ -552,7 +551,7 @@ class Plot:
                             scalar_vert[I_vert] = val
 
         else:
-            assert config.problem_type == PROBLEM_TYPE_PLATE
+            assert config.problem_type == ProblemType.PLATE
             w, thetax, thetay = unpack_solution(config, solver_data.r)
             for e in range(nE):
                 for i in range(num_quads_1D + 1):
@@ -597,13 +596,13 @@ class Plot:
         def get_segments_of_symbol(dof, s, x0, y0):
             segs = []
             FACTOR = 0.8
-            if dof == DOF_V:
+            if dof == Dof.V:
                 sx = s * FACTOR
                 sy = s
                 #A triangle with a line underneath. Center is at top vertex of triangle
                 segs.append([[-sx, -sy], [sx, -sy], [0, 0], [-sx, -sy]])  #triangle
                 segs.append([[-sx, -1.5 * sy], [sx, -1.5 * sy]])  #line underneath
-            elif dof == DOF_U:
+            elif dof == Dof.U:
                 sx = s
                 sy = s * FACTOR
                 #Same as V, but rotated -90 degrees,
@@ -620,10 +619,10 @@ class Plot:
         if config.show_bcs:
             L_domain = get_L_domain(mesh.nodes)
             s = min(L_domain / 40, L_domain * 0.01 * domain_scale)
-            if config.problem_type == PROBLEM_TYPE_PLANE_STRESS:
+            if config.problem_type == ProblemType.PLANE_STRESS:
                 marker_size = 1.3
             else:
-                assert config.problem_type == PROBLEM_TYPE_PLATE
+                assert config.problem_type == ProblemType.PLATE
                 marker_size = min(7, 5 * domain_scale)
             segments = []
             x_w_constrained = []
@@ -632,14 +631,14 @@ class Plot:
                 nodeIDs_constrained = mesh.node_sets[bc.node_set_name]
                 for I in nodeIDs_constrained:
                     x0, y0 = x_nodes[I], y_nodes[I]
-                    if bc.dof == DOF_U or bc.dof == DOF_V:
+                    if bc.dof == Dof.U or bc.dof == Dof.V:
                         segments.extend(get_segments_of_symbol(bc.dof, s, x0, y0))
-                    elif bc.dof == DOF_THETAX:
+                    elif bc.dof == Dof.THETAX:
                         segments.append([[x0, y0 - s], [x0, y0 + s]])  #vertical line
-                    elif bc.dof == DOF_THETAY:
+                    elif bc.dof == Dof.THETAY:
                         segments.append([[x0 - s, y0], [x0 + s, y0]])  #horizontal line
                     else:
-                        assert config.problem_type == PROBLEM_TYPE_PLATE and bc.dof == DOF_W
+                        assert config.problem_type == ProblemType.PLATE and bc.dof == Dof.W
                         x_w_constrained.append(x0)
                         y_w_constrained.append(y0)
 

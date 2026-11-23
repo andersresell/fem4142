@@ -8,8 +8,8 @@ if __name__ == "__main__":
     Lx = 10.0  #Length in x-direction
     Ly = 1.5  #Length in y-direction
     p0 = 1000000  #Pressure applied to the top edge
-    element_type = ELEMENT_TYPE_Q16  #Use 16 node quadrilateral element
-    problem_type = PROBLEM_TYPE_PLANE_STRESS  #Specify that a plane stress problem is solved
+    element_type = ElementType.Q16  #Use 16 node quadrilateral element
+    problem_type = ProblemType.PLANE_STRESS  #Specify that a plane stress problem is solved
     nEx = 15  #Number of elements in x-direction
     nEy = 2  #Number of elements in y-direction
 
@@ -26,14 +26,14 @@ if __name__ == "__main__":
     #====================================================================
     # Add fixed boundary condition  to the left edge called "west"
     #====================================================================
-    add_boundary_condition(config, mesh, "west", DOF_U, 0)  #set u to 0
-    add_boundary_condition(config, mesh, "west", DOF_V, 0)  #set v to 0
+    add_boundary_condition(config, mesh, "west", Dof.U, 0)  #set u to 0
+    add_boundary_condition(config, mesh, "west", Dof.V, 0)  #set v to 0
 
     #====================================================================
     # Assign a linearly varying load on the top edge named "north"
     #====================================================================
     load_func = lambda x, y: p0 * (1 - x / Lx)
-    add_load(config, mesh, "north", LOAD_TYPE_PRESSURE, load_func)
+    add_load(config, mesh, "north", LoadType.PRESSURE, load_func)
 
     #====================================================================
     # Create objects holding system matrices and vectors. Then assemble

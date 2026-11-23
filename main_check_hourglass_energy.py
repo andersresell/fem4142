@@ -8,8 +8,8 @@ if __name__ == "__main__":
     Lx = 1  #Length in x-direction
     Ly = 1  #Length in y-direction
     q = 0  #1000  #Line load applied to the top edge
-    element_type = ELEMENT_TYPE_Q4  #Use quadrilateral element
-    problem_type = PROBLEM_TYPE_PLANE_STRESS  #Specify that a plane stress problem is solved
+    element_type = ElementType.Q4  #Use quadrilateral element
+    problem_type = ProblemType.PLANE_STRESS  #Specify that a plane stress problem is solved
     nEx = 1  #Number of elements in x-direction
     nEy = 1  #Number of elements in y-direction
 
@@ -29,14 +29,14 @@ if __name__ == "__main__":
     #====================================================================
     # Add fixed boundary condition  to the left edge called "west"
     #====================================================================
-    add_boundary_condition(config, mesh, "south_west", DOF_U, 0.1)
-    add_boundary_condition(config, mesh, "south_west", DOF_V, 0)
-    add_boundary_condition(config, mesh, "south_east", DOF_U, -0.1)
-    add_boundary_condition(config, mesh, "south_east", DOF_V, 0)
-    add_boundary_condition(config, mesh, "north_east", DOF_U, 0.1)
-    # add_boundary_condition(config, mesh, "north_east", DOF_V, -0.1)
-    add_boundary_condition(config, mesh, "north_west", DOF_U, -0.1)
-    # add_boundary_condition(config, mesh, "north_west", DOF_V, 0)
+    add_boundary_condition(config, mesh, "south_west", Dof.U, 0.1)
+    add_boundary_condition(config, mesh, "south_west", Dof.V, 0)
+    add_boundary_condition(config, mesh, "south_east", Dof.U, -0.1)
+    add_boundary_condition(config, mesh, "south_east", Dof.V, 0)
+    add_boundary_condition(config, mesh, "north_east", Dof.U, 0.1)
+    # add_boundary_condition(config, mesh, "north_east", Dof.V, -0.1)
+    add_boundary_condition(config, mesh, "north_west", Dof.U, -0.1)
+    # add_boundary_condition(config, mesh, "north_west", Dof.V, 0)
 
     #====================================================================
     # Assign a linearly varying load on the top edge named "north"
@@ -44,10 +44,10 @@ if __name__ == "__main__":
     load_func = lambda x, y: p0 * (1 - x / Lx)
     load_func = lambda x, y: p0
 
-    # add_load(config, mesh, "north", LOAD_TYPE_PRESSURE, load_func)
+    # add_load(config, mesh, "north", LoadType.PRESSURE, load_func)
 
     # load_func = lambda x, y: 10 * p0
-    # add_load(config, mesh, "east", LOAD_TYPE_PRESSURE, load_func)
+    # add_load(config, mesh, "east", LoadType.PRESSURE, load_func)
 
     #====================================================================
     # Create objects holding system matrices and vectors. Then assemble

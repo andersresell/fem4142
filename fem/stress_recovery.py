@@ -9,11 +9,11 @@ def recover_stress_plane_stress_consistent(e, config: Config, mesh: Mesh, nodes,
     sample points xi_eta (natural coordinates). This is the stress field that is consistent with the
     finite element formulation. It is in general discontinuous between elements.
     Returns an array of shape (number of sample points, 3) with the columns sigma_xx, sigma_yy, sigma_xy."""
-    assert config.problem_type == PROBLEM_TYPE_PLANE_STRESS
+    assert config.problem_type == ProblemType.PLANE_STRESS
     assert e >= 0 and e < mesh.get_nE()
     elements = mesh.elements
     element_type = config.element_type
-    nNl = element_type_to_nNl[element_type]
+    nNl = ELEMENT_TRAITS[element_type].nNl
     E = config.E
     nu = config.nu
     n_sample_points = len(xi_eta)

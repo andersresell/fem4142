@@ -17,25 +17,25 @@ def calc_Ke(config: Config, mesh: Mesh, e, calc_hourglass_stiffness_only=False):
         # This is the normal case: Calculate normal stiffness and
         # hourglass stiffness
         #====================================================================
-        if config.problem_type == PROBLEM_TYPE_PLANE_STRESS:
-            if config.element_type == ELEMENT_TYPE_Q4_USER:
+        if config.problem_type == ProblemType.PLANE_STRESS:
+            if config.element_type == ElementType.Q4_USER:
                 Ke = element_stiffness_user.calc_Ke_plane_stress_user_Q4(config, mesh, e)
             else:
                 Ke = element_stiffness.calc_Ke_plane_stress(config, mesh, e)
-                if config.element_type == ELEMENT_TYPE_Q4R:
+                if config.element_type == ElementType.Q4R:
                     Ke += element_stiffness.calc_Ke_hourglass_plane_stress_Q4R(config, mesh, e)
         else:
-            assert config.problem_type == PROBLEM_TYPE_PLATE
+            assert config.problem_type == ProblemType.PLATE
             Ke = element_stiffness.calc_Ke_mindlin_plate(config, mesh, e)
     else:
         #====================================================================
         # This case is used when we only want to assemble the hourglass
         # stiffness part of the stiffness matrix (for artificial energy check)
         #====================================================================
-        if config.problem_type == PROBLEM_TYPE_PLANE_STRESS and config.element_type == ELEMENT_TYPE_Q4R:
+        if config.problem_type == ProblemType.PLANE_STRESS and config.element_type == ElementType.Q4R:
             Ke = element_stiffness.calc_Ke_hourglass_plane_stress_Q4R(config, mesh, e)
         else:
-            nNl = element_type_to_nNl[config.element_type]
+            nNl = ELEMENT_TRAITS[config.element_type].nNl
             NUM_DOFS = get_num_dofs_from_problem_type(config.problem_type)
             Ke = np.zeros((NUM_DOFS * nNl, NUM_DOFS * nNl))  #Return zero matrix if no hourglass stabilization is used
     return Ke
@@ -45,7 +45,7 @@ def assemble_stiffness_matrix(mesh: Mesh, config: Config, solver_data: SolverDat
     element_type = config.element_type
     elements = mesh.elements
     nodes = mesh.nodes
-    nNl = element_type_to_nNl[element_type]
+    nNl = ELEMENT_TRAITS[element_type].nNl
     nN = mesh.get_nN()
     nE = mesh.get_nE()
     assert elements.shape[1] == nNl
@@ -121,7 +121,7 @@ def solve(config: Config, solver_data: SolverData, mesh: Mesh):
 
     solver_data.R_int = solver_data.K @ solver_data.r  #Calculate internal forces
 
-    if config.element_type == ELEMENT_TYPE_Q4R and config.problem_type == PROBLEM_TYPE_PLANE_STRESS:
+    if config.element_type == ElementType.Q4R and config.problem_type == ProblemType.PLANE_STRESS:
         #====================================================================
         # Check the artificial hourglass energy
         #====================================================================

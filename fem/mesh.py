@@ -1,24 +1,22 @@
-from typing import Dict
+from dataclasses import dataclass
 import numpy as np
 from fem.utils import *
 from fem.fem_utils import *
 import fem.shape_functions as shape_functions
 
 
+@dataclass
 class ElementSet:
-
-    def __init__(self, element_entity=None):
-        self.elementIDs = np.ndarray([], dtype=int)
-        self.element_entity = element_entity
+    element_entity: ElementEntity  #The part of the elements that the set contains: one of the edges, or the face
+    elementIDs: np.ndarray  #The elements in the set
 
 
+@dataclass
 class Mesh:
-
-    def __init__(self):
-        self.nodes = np.ndarray([])
-        self.elements = np.ndarray([])
-        self.node_sets = {}
-        self.element_sets: Dict[str, ElementSet] = {}
+    nodes: np.ndarray  #Node coordinates, one row (x, y) per node
+    elements: np.ndarray  #The node numbers of each element, one row per element
+    node_sets: dict[str, np.ndarray]  #Named sets of node numbers, e.g. "west"
+    element_sets: dict[str, ElementSet]  #Named sets of elements, e.g. "west"
 
     def get_nN(self):
         """Get number of nodes"""
@@ -27,101 +25,6 @@ class Mesh:
     def get_nE(self):
         """Get number of elements"""
         return self.elements.shape[0]
-
-
-class QuadElementTraits:
-    """Containing logic for creating higher order quad elements from Q4 elements
-    as well as natural coordinates of the nodes and local node indices for load integration"""
-
-    Q4_edges = [(0, 1), (1, 2), (2, 3), (3, 0)]
-
-    def __init__(self, element_type):
-        if element_type == ELEMENT_TYPE_Q4 or element_type == ELEMENT_TYPE_Q4R or element_type == ELEMENT_TYPE_Q4_USER:
-            self.nNl = 4
-            self.xi_eta = [(-1, -1), (1, -1), (1, 1), (-1, 1)]
-            self.internal_edge_nodes = []
-            self.internal_nodes = []
-            self.corner_nodes = [0, 1, 2, 3]
-            self.entity_nodes = {
-                EDGE0_QUAD: [0, 1],
-                EDGE1_QUAD: [1, 2],
-                EDGE2_QUAD: [2, 3],
-                EDGE3_QUAD: [3, 0],
-                FACE_QUAD: [0, 1, 2, 3]
-            }
-        elif element_type == ELEMENT_TYPE_Q8 or element_type == ELEMENT_TYPE_Q8R:
-            self.nNl = 8
-            self.xi_eta = [(-1, -1), (1, -1), (1, 1), (-1, 1), (0, -1), (1, 0), (0, 1), (-1, 0)]
-            self.internal_edge_nodes = [[4], [5], [6], [7]]
-            self.internal_nodes = []
-            self.corner_nodes = [0, 1, 2, 3]
-            self.entity_nodes = {
-                EDGE0_QUAD: [0, 4, 1],
-                EDGE1_QUAD: [1, 5, 2],
-                EDGE2_QUAD: [2, 6, 3],
-                EDGE3_QUAD: [3, 7, 0],
-                FACE_QUAD: [0, 1, 2, 3, 4, 5, 6, 7]
-            }
-
-        elif element_type == ELEMENT_TYPE_Q9 or element_type == ELEMENT_TYPE_Q9R:
-            self.nNl = 9
-            self.xi_eta = [(-1, -1), (1, -1), (1, 1), (-1, 1), (0, -1), (1, 0), (0, 1), (-1, 0), (0, 0)]
-            self.internal_edge_nodes = [[4], [5], [6], [7]]
-            self.internal_nodes = [8]
-            self.corner_nodes = [0, 1, 2, 3]
-            self.entity_nodes = {
-                EDGE0_QUAD: [0, 4, 1],
-                EDGE1_QUAD: [1, 5, 2],
-                EDGE2_QUAD: [2, 6, 3],
-                EDGE3_QUAD: [3, 7, 0],
-                FACE_QUAD: [0, 1, 2, 3, 4, 5, 6, 7, 8]
-            }
-        elif element_type == ELEMENT_TYPE_Q16:
-            self.nNl = 16
-            #fmt: off
-            self.xi_eta = [(-1, -1), (1, -1), (1, 1), (-1, 1),
-                           (-1/3, -1), (1/3, -1), (1, -1/3), (1, 1/3),
-                           (1/3, 1), (-1/3, 1), (-1, 1/3), (-1, -1/3),
-                           (-1/3, -1/3), (1/3, -1/3), (1/3, 1/3), (-1/3, 1/3)]
-            #fmt: on
-            self.internal_edge_nodes = [[4, 5], [6, 7], [8, 9], [10, 11]]
-            self.internal_nodes = [12, 13, 14, 15]
-            self.corner_nodes = [0, 1, 2, 3]
-            self.entity_nodes = {
-                EDGE0_QUAD: [0, 4, 5, 1],
-                EDGE1_QUAD: [1, 6, 7, 2],
-                EDGE2_QUAD: [2, 8, 9, 3],
-                EDGE3_QUAD: [3, 10, 11, 0],
-                FACE_QUAD: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
-            }
-        else:
-            assert False
-
-    def is_corner_node(self, il):
-        return il in self.corner_nodes
-
-    def is_internal_node(self, il):
-        return il in self.internal_nodes
-
-    def is_internal_edge_node(self, il):
-        for edge in self.internal_edge_nodes:
-            if il in edge:
-                return True
-        return False
-
-    def get_edge_id(self, il):
-        assert self.is_internal_edge_node(il)
-        for edge_id in range(len(self.internal_edge_nodes)):
-            if il in self.internal_edge_nodes[edge_id]:
-                return edge_id
-        assert False
-
-    def get_internal_edge_local_index(self, il, edge_id):
-        assert il in self.internal_edge_nodes[edge_id]
-        return self.internal_edge_nodes[edge_id].index(il)
-
-    def get_nodeIDs_from_element_entity(self, element_entity):
-        return self.entity_nodes[element_entity]
 
 
 def check_if_internal_edge_is_created(existing_edges_Q4, I_corner_a, I_corner_b):
@@ -137,12 +40,9 @@ def check_if_internal_edge_is_created(existing_edges_Q4, I_corner_a, I_corner_b)
 
 
 def create_higher_order_quad_mesh_from_Q4_mesh(mesh_Q4: Mesh, config: Config):
-    element_type = config.element_type
-
-    element_traits = QuadElementTraits(element_type)
+    element_traits = ELEMENT_TRAITS[config.element_type]
     nNl = element_traits.nNl
 
-    mesh = Mesh()
     elements_Q4 = mesh_Q4.elements
     nodes_Q4 = mesh_Q4.nodes
     assert elements_Q4.shape[1] == 4
@@ -172,8 +72,8 @@ def create_higher_order_quad_mesh_from_Q4_mesh(mesh_Q4: Mesh, config: Config):
                 #Now we know that the node is an internal edge node
                 edge_id = element_traits.get_edge_id(il)
 
-                I_corner_a = elements_Q4[e, element_traits.Q4_edges[edge_id][0]]
-                I_corner_b = elements_Q4[e, element_traits.Q4_edges[edge_id][1]]
+                I_corner_a = elements_Q4[e, QUAD_EDGES[edge_id][0]]
+                I_corner_b = elements_Q4[e, QUAD_EDGES[edge_id][1]]
 
                 exists, reversed = check_if_internal_edge_is_created(existing_edges_Q4, I_corner_a, I_corner_b)
                 if exists:
@@ -197,7 +97,7 @@ def create_higher_order_quad_mesh_from_Q4_mesh(mesh_Q4: Mesh, config: Config):
                 new_node_counter += 1
 
                 xi, eta = element_traits.xi_eta[il]
-                N = shape_functions.calc_N(xi, eta, ELEMENT_TYPE_Q4)
+                N = shape_functions.calc_N(xi, eta, ElementType.Q4)
                 #Calculate the new node coordinates
                 x, y = N @ x_Q4, N @ y_Q4
                 nodes = np.append(nodes, [[x, y]], axis=0)
@@ -207,13 +107,12 @@ def create_higher_order_quad_mesh_from_Q4_mesh(mesh_Q4: Mesh, config: Config):
 
         #Cache all edges that wasn't previously created for this element
         for edge_id in range(4):
-            I_corner_a = elements[e, element_traits.Q4_edges[edge_id][0]]
-            I_corner_b = elements[e, element_traits.Q4_edges[edge_id][1]]
-            if (I_corner_a, I_corner_b) not in existing_edges_Q4:  # and len(element_traits.internal_edge_nodes) > 0:
+            I_corner_a = elements[e, QUAD_EDGES[edge_id][0]]
+            I_corner_b = elements[e, QUAD_EDGES[edge_id][1]]
+            if (I_corner_a, I_corner_b) not in existing_edges_Q4:
                 existing_edges_Q4[(I_corner_a, I_corner_b)] = []
-                if len(element_traits.internal_edge_nodes) > 0:
-                    for il in element_traits.internal_edge_nodes[edge_id]:
-                        existing_edges_Q4[(I_corner_a, I_corner_b)].append(elements[e, il])
+                for il in element_traits.internal_edge_nodes[edge_id]:
+                    existing_edges_Q4[(I_corner_a, I_corner_b)].append(elements[e, il])
 
     #====================================================================
     # Create node sets from the previously created element sets
@@ -227,17 +126,13 @@ def create_higher_order_quad_mesh_from_Q4_mesh(mesh_Q4: Mesh, config: Config):
         element_entity = elem_set.element_entity
         for e_l in range(nE_set):
             e = elementIDs[e_l]
-            nodeIDs_l = element_traits.get_nodeIDs_from_element_entity(element_entity)
+            nodeIDs_l = element_traits.entity_nodes[element_entity]
             for il in nodeIDs_l:
                 I = elements[e, il]
                 nodeIDs.add(I)
         node_sets[set_name] = np.array(sorted(nodeIDs), dtype=int)
 
-    mesh.nodes = nodes
-    mesh.elements = elements
-    mesh.element_sets = mesh_Q4.element_sets.copy()
-    mesh.node_sets = node_sets
-    return mesh
+    return Mesh(nodes, elements, node_sets, mesh_Q4.element_sets.copy())
 
 
 def create_structured_Q4_mesh(Lx, Ly, nEx, nEy) -> Mesh:
@@ -278,7 +173,7 @@ def create_structured_Q4_mesh(Lx, Ly, nEx, nEy) -> Mesh:
             I = IX_node(i, j)
             nodes[I, :] = np.array([x, y])
 
-    il_to_ij_loc = il_to_ij_loc_all[ELEMENT_TYPE_Q4]
+    il_to_ij_loc = ELEMENT_TRAITS[ElementType.Q4].il_to_ij
     nNl_1D = 2
     for ey in range(nEy):
         for ex in range(nEx):
@@ -304,28 +199,29 @@ def create_structured_Q4_mesh(Lx, Ly, nEx, nEy) -> Mesh:
                           south 
                           
     Each quad element is marked with local element entities as follows
-    
+
         ______EDGE2_____
-        |               |                    
+        |               |
         |               |
    EDGE3|      FACE     |EDGE1
         |               |
         |               |
         |_______________|
               EDGE0
-    Each element set is marked with a name and contains a
-    list of tuples (element_index, element_entity)
+    Each element set is marked with a name and contains the element
+    indices, and the element entity (edge or face) that the set refers to
     """
-    element_sets = {}
-    element_sets["domain"] = ElementSet(FACE_QUAD)
-    element_sets["west"] = ElementSet(EDGE3_QUAD)
-    element_sets["east"] = ElementSet(EDGE1_QUAD)
-    element_sets["south"] = ElementSet(EDGE0_QUAD)
-    element_sets["north"] = ElementSet(EDGE2_QUAD)
+    set_name_to_entity = {
+        "domain": ElementEntity.FACE,
+        "west": ElementEntity.EDGE3,
+        "east": ElementEntity.EDGE1,
+        "south": ElementEntity.EDGE0,
+        "north": ElementEntity.EDGE2
+    }
 
     element_sets_tmp = {}
-    for set_name in element_sets.keys():
-        element_sets_tmp[set_name] = set()  #using sets temporarily to have
+    for set_name in set_name_to_entity.keys():
+        element_sets_tmp[set_name] = set()  #using sets temporarily to avoid duplicates
 
     for ey in range(nEy):
         for ex in range(nEx):
@@ -344,8 +240,9 @@ def create_structured_Q4_mesh(Lx, Ly, nEx, nEy) -> Mesh:
                     element_sets_tmp["north"].add(e)
 
     #Convert the sets to np arrays and store them in the element sets
+    element_sets = {}
     for set_name, elem_set in element_sets_tmp.items():
-        element_sets[set_name].elementIDs = np.array(sorted(elem_set), dtype=int)
+        element_sets[set_name] = ElementSet(set_name_to_entity[set_name], np.array(sorted(elem_set), dtype=int))
 
     #Add the corner node sets
     node_sets = {}
@@ -354,13 +251,7 @@ def create_structured_Q4_mesh(Lx, Ly, nEx, nEy) -> Mesh:
     node_sets["north_west"] = np.array([IX_node(0, nNy - 1)], dtype=int)
     node_sets["north_east"] = np.array([IX_node(nNx - 1, nNy - 1)], dtype=int)
 
-    mesh = Mesh()
-    mesh.nodes = nodes
-    mesh.elements = elements
-    mesh.element_sets = element_sets
-    mesh.node_sets = node_sets
-
-    return mesh
+    return Mesh(nodes, elements, node_sets, element_sets)
 
 
 def perturb_mesh_nodes_of_structured_Q4_mesh(mesh_Q4: Mesh, Lx, Ly, nEx, nEy, perturb_mesh_nodes_factor):

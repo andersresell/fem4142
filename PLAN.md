@@ -10,10 +10,10 @@ Progress tracker for the handover clean-up. Can be deleted when we're done.
 
 ## Step 2: Code structure
 - [x] Print a warning when the stiffness matrix is singular. Replace the Q4R/Q9R plate regression values (singular systems) with a test of the warning
-- [ ] IntEnum constants (`ElementType.Q16`, ...)
-- [ ] Dataclasses for Config, Mesh, SolverData, ...
-- [ ] One `ElementTraits` dict built once (including `il_to_ij`), replacing the parallel dicts in `fem_utils.py`
-- [ ] `morph_mesh` with named presets: `quarter_circle`, `quarter_annulus`, `quadrilateral`. Unknown name gives an error
+- [x] IntEnum constants (`ElementType.Q16`, ...)
+- [x] Dataclasses for Config, Mesh, SolverData, ...
+- [x] One `ELEMENT_TRAITS` dict built once (including `il_to_ij`), replacing the parallel dicts in `fem_utils.py`
+- [x] `morph_mesh` with named presets: `quarter_circle`, `quarter_annulus`, `quadrilateral`. Unknown name gives an error
 
 ## Step 3: Stress recovery
 - [ ] Consistent and L2 (consistent mass) recovery as post-processing functions, not stored in solver_data

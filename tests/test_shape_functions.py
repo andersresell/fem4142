@@ -4,7 +4,6 @@ from problems import ALL_ELEMENT_TYPES, element_name
 
 import fem.shape_functions as shape_functions
 from fem.fem_utils import *
-from fem.mesh import QuadElementTraits
 
 # A few arbitrary points inside the reference element [-1, 1] x [-1, 1]
 SAMPLE_POINTS = [(0.0, 0.0), (0.3, -0.7), (-0.9, 0.45), (0.77, 0.12), (-1.0, 1.0)]
@@ -12,7 +11,7 @@ SAMPLE_POINTS = [(0.0, 0.0), (0.3, -0.7), (-0.9, 0.45), (0.77, 0.12), (-1.0, 1.0
 
 @pytest.mark.parametrize("element_type", ALL_ELEMENT_TYPES, ids=element_name)
 def test_shape_function_is_one_at_its_own_node_and_zero_at_the_others(element_type):
-    xi_eta_nodes = QuadElementTraits(element_type).xi_eta
+    xi_eta_nodes = ELEMENT_TRAITS[element_type].xi_eta
     for il, (xi, eta) in enumerate(xi_eta_nodes):
         N = shape_functions.calc_N(xi, eta, element_type)
         expected = np.zeros(len(xi_eta_nodes))

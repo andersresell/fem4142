@@ -8,8 +8,8 @@ if __name__ == "__main__":
     Lx = 10  #Length in x-direction
     Ly = Lx / 100  #Length in y-direction (beam height)
     P = 1000  #Concentrated tip load in N
-    element_type = ELEMENT_TYPE_Q16  #Use quadrilateral element
-    problem_type = PROBLEM_TYPE_PLANE_STRESS  #Specify that a plane stress problem is solved
+    element_type = ElementType.Q16  #Use quadrilateral element
+    problem_type = ProblemType.PLANE_STRESS  #Specify that a plane stress problem is solved
     nEx = 1  #Number of elements in x-direction
     nEy = 1  #Number of elements in y-direction
 
@@ -33,17 +33,17 @@ if __name__ == "__main__":
     #====================================================================
     # Add fixed boundary condition  to the left edge called "west"
     #====================================================================
-    # add_boundary_condition(config, mesh, "west", DOF_U, 0)
-    # add_boundary_condition(config, mesh, "west", DOF_V, 0)
+    # add_boundary_condition(config, mesh, "west", Dof.U, 0)
+    # add_boundary_condition(config, mesh, "west", Dof.V, 0)
 
-    add_boundary_condition(config, mesh, "west", DOF_U, 0)
-    add_boundary_condition(config, mesh, "south_west", DOF_V, 0)
+    add_boundary_condition(config, mesh, "west", Dof.U, 0)
+    add_boundary_condition(config, mesh, "south_west", Dof.V, 0)
 
     #====================================================================
     # Apply a uniform vertical traction on the right edge "east" to model tip load
     #====================================================================
     load_func = lambda x, y: (0, t_y)  #(t_x, t_y) - only vertical component
-    add_load(config, mesh, "east", LOAD_TYPE_TRACTION, load_func)
+    add_load(config, mesh, "east", LoadType.TRACTION, load_func)
 
     #====================================================================
     # Create objects holding system matrices and vectors. Then assemble
