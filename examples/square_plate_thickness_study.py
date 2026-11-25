@@ -85,4 +85,6 @@ if __name__ == "__main__":
     plt.ylim([0, 1.2])
     plt.grid()
     plt.legend()
-    plt.show()
+
+    # plt.show()
+    Plot(config, mesh, solver_data)
