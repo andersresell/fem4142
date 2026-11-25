@@ -253,7 +253,7 @@ def test_the_longest_arrow_follows_the_symbol_size(nE):
     config.arrow_type = "external forces"
     plot = plot_tools.Plot(config, mesh, solver_data)
     arrows = [collection for collection in plot.ax.collections if isinstance(collection, matplotlib.quiver.Quiver)][0]
-    longest_arrow = np.max(np.sqrt(arrows.U**2 + arrows.V**2)) * plot.get_screen_length_of_unit_length()
+    longest_arrow = np.max(np.sqrt(arrows.U**2 + arrows.V**2)) * plot_tools.get_screen_length_of_unit_length(plot.ax)
     window_scale = plot.fig.get_size_inches()[1] / plot.DESIGN_HEIGHT
     expected_length = max(5 * plot.get_symbol_size(), 25 * window_scale)
     #The arrows make the plot a bit larger after they are drawn, which makes them a bit shorter on the screen
@@ -283,6 +283,37 @@ def test_labels_show_node_and_element_numbers():
 def test_node_spacing():
     config, mesh, solver_data = solved_plane_stress_problem()  #Q9 elements of size 1 x 0.5
     assert plot_tools.get_node_spacing(mesh, config.element_type) == pytest.approx(0.25)
+
+
+def test_element_size_uses_the_shortest_of_all_four_sides():
+    config = create_config(1.0, 0.3, 1.0, ElementType.Q4, ProblemType.PLANE_STRESS)
+    mesh = create_structured_quad_mesh(config, 1.0, 1.0, 1, 1)
+    morph_mesh_to_quadrilateral(mesh, [(0, 0), (4, 0), (3, 1), (0, 3)])  #The shortest side goes from (4, 0) to (3, 1)
+    assert plot_tools.get_element_size(mesh) == pytest.approx(np.sqrt(2))
+
+
+def get_element_edge_width(plot):
+    element_edges = [collection for collection in plot.ax.collections if collection.get_gid() == "element_edges"]
+    return element_edges[0].get_linewidth()[0]
+
+
+def test_fine_meshes_get_thin_element_edges_and_small_nodes():
+    """Otherwise the edges and nodes of a fine mesh would cover the contours"""
+    config, mesh, solver_data = solved_plane_stress_problem()  #A coarse mesh
+    plot = plot_tools.Plot(config, mesh, solver_data)
+    assert get_element_edge_width(plot) == 1.0
+
+    config = create_config(210e9, 0.3, 1.0, ElementType.Q4, ProblemType.PLANE_STRESS)
+    mesh = create_structured_quad_mesh(config, 10.0, 1.0, 100, 15)
+    add_boundary_condition(config, mesh, "west", Dof.U, 0)
+    add_boundary_condition(config, mesh, "west", Dof.V, 0)
+    add_load(config, mesh, "north", LoadType.PRESSURE, lambda x, y: 1000.0)
+    solver_data = create_solver_data(config, mesh)
+    solve(config, solver_data, mesh)
+    plot = plot_tools.Plot(config, mesh, solver_data)
+    assert get_element_edge_width(plot) < 1.0
+    node_diameter = np.sqrt(plot.node_markers.get_sizes()[0])
+    assert node_diameter < 0.5 * plot.get_symbol_size()  #Smaller than the nodes of a coarse mesh can be
 
 
 def test_symbols_have_a_largest_size_and_follow_the_symbol_size_slider():

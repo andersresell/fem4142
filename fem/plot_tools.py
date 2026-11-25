@@ -179,6 +179,33 @@ def calc_disp_scaling(config: Config, mesh: Mesh, solver_data: SolverData):
     return float(f"{0.1 * mesh_size / largest_displacement:.2g}")
 
 
+def get_element_size(mesh: Mesh):
+    """A typical element size: the shortest of the four sides of each element, as a median over all elements.
+    This works for any quad mesh, also unstructured ones."""
+    corners = mesh.nodes[mesh.elements[:, :4]]  #The four corners of each element, one row per element
+    shortest_side = np.full(mesh.get_nE(), np.inf)
+    for corner_a, corner_b in QUAD_EDGES:
+        side = np.linalg.norm(corners[:, corner_b] - corners[:, corner_a], axis=1)
+        shortest_side = np.minimum(shortest_side, side)
+    return np.median(shortest_side)
+
+
+def get_screen_length_of_unit_length(ax):
+    """The length on the screen (in points, 1/72 inch) of one unit of length in the plot"""
+    ax.autoscale_view()
+    ax.apply_aspect()
+    x0 = ax.transData.transform((0, 0))[0]
+    x1 = ax.transData.transform((1, 0))[0]
+    return (x1 - x0) * 72 / ax.figure.dpi
+
+
+def calc_element_edge_width(ax, mesh: Mesh):
+    """The line width (in points) of the element edges. Small elements on the screen get thinner lines,
+    so that a fine mesh doesn't hide the contours."""
+    element_size_on_screen = get_element_size(mesh) * get_screen_length_of_unit_length(ax)
+    return np.clip(0.15 * element_size_on_screen, 0.1, 1.0)
+
+
 def plot_field(ax, config: Config, mesh: Mesh, solver_data: SolverData, field, nodal_stress_L2=None):
     """Draws a field (e.g. "u_mag" or "sigma_xx", see get_field_names) as a contour plot on the mesh, in the
     matplotlib axes ax. For plane stress, the mesh is deformed by the displacements times config.disp_scaling
@@ -233,10 +260,12 @@ def plot_field(ax, config: Config, mesh: Mesh, solver_data: SolverData, field, n
     else:
         contours = ax.tripcolor(triangulation, values.ravel(), shading="gouraud", cmap=COLORMAP)
 
+    ax.set_aspect("equal")
     if config.show_element_edges:
         element_outlines = [np.column_stack([x[e, outline], y[e, outline]]) for e in range(nE)]
-        ax.add_collection(LineCollection(element_outlines, colors="black", linewidths=1.0))
-    ax.set_aspect("equal")
+        element_edges = LineCollection(element_outlines, colors="black", gid="element_edges")
+        ax.add_collection(element_edges)
+        element_edges.set_linewidth(calc_element_edge_width(ax, mesh))
     return contours
 
 
@@ -247,11 +276,7 @@ def plot_field(ax, config: Config, mesh: Mesh, solver_data: SolverData, field, n
 
 def get_node_spacing(mesh: Mesh, element_type):
     """A typical distance between neighbouring nodes, used to choose the size of the nodes and labels"""
-    corners = mesh.nodes[mesh.elements[:, :4]]  #The four corners of each element
-    edge_a = np.linalg.norm(corners[:, 1] - corners[:, 0], axis=1)
-    edge_b = np.linalg.norm(corners[:, 3] - corners[:, 0], axis=1)
-    shortest_edge = np.median(np.minimum(edge_a, edge_b))
-    return shortest_edge / (ELEMENT_TRAITS[element_type].nNl_1D - 1)
+    return get_element_size(mesh) / (ELEMENT_TRAITS[element_type].nNl_1D - 1)
 
 
 def calc_outward_normals(mesh: Mesh, element_type):
@@ -594,7 +619,9 @@ class Plot:
         #Scatter plots take the marker size as an area (in points^2)
         size = self.get_symbol_size() * self.config.symbol_scale
         if self.node_markers is not None:
-            self.node_markers.set_sizes([(0.5 * size)**2])
+            #The nodes may become much smaller than the other symbols, so that they don't cover a fine mesh
+            node_size = self.get_symbol_size(smallest=0.5) * self.config.symbol_scale
+            self.node_markers.set_sizes([(0.5 * node_size)**2])
         for label in self.node_labels:
             label.set_fontsize(size)
             label.xyann = (0.25 * size, 0.25 * size)  #Distance from the node (in points)
@@ -605,6 +632,9 @@ class Plot:
         for markers, relative_size in self.bc_markers:
             markers.set_sizes([(relative_size * size)**2])
             markers.set_linewidths(max(0.8, 0.12 * size))
+        for collection in self.ax.collections:  #The element edges get thinner when the elements get small
+            if collection.get_gid() == "element_edges":
+                collection.set_linewidth(calc_element_edge_width(self.ax, self.mesh))
 
     def on_resize(self, event):
         self.apply_sizes()
@@ -722,26 +752,18 @@ class Plot:
         #Make room for the symbols at the edges of the plot, so that they are not cut off. A symbol reaches half
         #its size (the largest relative size is 2.8) from the node, which is converted to the units of the plot.
         reach_on_screen = 0.5 * 2.8 * self.get_symbol_size() * self.config.symbol_scale
-        reach = reach_on_screen / self.get_screen_length_of_unit_length()
+        reach = reach_on_screen / get_screen_length_of_unit_length(self.ax)
         nodeIDs = list(prescribed_dofs.keys())
         node_positions = np.column_stack([x_nodes[nodeIDs], y_nodes[nodeIDs]])
         self.ax.update_datalim(np.vstack([node_positions - reach, node_positions + reach]))
 
-    def get_symbol_size(self):
+    def get_symbol_size(self, smallest=3):
         """The size (in points, 1/72 inch) that the nodes, labels, boundary condition symbols and arrows are based on,
         before the size sliders are applied. It follows the distance between the nodes on the screen, but is kept
         between a smallest and a largest size (which follow the window size, like the fonts)."""
         window_scale = self.fig.get_size_inches()[1] / self.DESIGN_HEIGHT
-        node_spacing_on_screen = self.node_spacing * self.get_screen_length_of_unit_length()
-        return np.clip(0.35 * node_spacing_on_screen, 3 * window_scale, 12 * window_scale)
-
-    def get_screen_length_of_unit_length(self):
-        """The length on the screen (in points, 1/72 inch) of one unit of length in the plot"""
-        self.ax.autoscale_view()
-        self.ax.apply_aspect()
-        x0 = self.ax.transData.transform((0, 0))[0]
-        x1 = self.ax.transData.transform((1, 0))[0]
-        return (x1 - x0) * 72 / self.fig.dpi
+        node_spacing_on_screen = self.node_spacing * get_screen_length_of_unit_length(self.ax)
+        return np.clip(0.35 * node_spacing_on_screen, smallest * window_scale, 12 * window_scale)
 
     def plot_arrow_field(self, x_nodes, y_nodes):
         config = self.config
@@ -773,7 +795,7 @@ class Plot:
         window_scale = self.fig.get_size_inches()[1] / self.DESIGN_HEIGHT
         longest_arrow_on_screen = max(5 * self.get_symbol_size(), 25 * window_scale) * self.config.arrow_scale
         #The arrows are given in the units of the plot, so the length on the screen is converted to those units
-        longest_arrow = longest_arrow_on_screen / self.get_screen_length_of_unit_length()
+        longest_arrow = longest_arrow_on_screen / get_screen_length_of_unit_length(self.ax)
         arrow_x = field_x[keep] * longest_arrow / largest
         arrow_y = field_y[keep] * longest_arrow / largest
 
