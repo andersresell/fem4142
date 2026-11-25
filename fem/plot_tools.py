@@ -22,7 +22,7 @@ FIELD_LABELS = {
     "none": "none",
     "u": r"$u$",
     "v": r"$v$",
-    "u_mag": r"$|\mathbf{u}| = \sqrt{u^2 + v^2}$",
+    "u_mag": r"$\|\mathbf{u}\|$",
     "sigma_xx": r"$\sigma_{xx}$",
     "sigma_yy": r"$\sigma_{yy}$",
     "sigma_xy": r"$\sigma_{xy}$",
