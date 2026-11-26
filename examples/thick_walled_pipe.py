@@ -23,7 +23,7 @@ if __name__ == "__main__":
     a = 0.1  #Inner radius in m
     b = 0.2  #Outer radius in m (b/a = 2 is a thick wall)
     p = 10e6  #Internal pressure in Pa (100 bar)
-    element_type = ElementType.Q4  #Try also ElementType.Q4, whose straight edges cut the corners of the arcs
+    element_type = ElementType.Q4  #Try also ElementType.Q9, which follows the arcs and gives much better stresses
     problem_type = ProblemType.PLANE_STRESS
     nEx = 3  #Number of elements through the wall
     nEy = 8  #Number of elements around the quarter circle

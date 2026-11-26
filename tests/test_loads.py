@@ -1,4 +1,6 @@
 """Checks of the consistent load integration and the validation of user-supplied load functions."""
+import math
+
 import pytest
 from problems import ALL_ELEMENT_TYPES, element_name
 
@@ -96,3 +98,12 @@ def test_invalid_load_functions_are_rejected(load_type, load_function):
         element_set_name = "north"
     with pytest.raises(ValueError):
         add_load(config, mesh, element_set_name, load_type, load_function)
+
+
+def test_load_function_that_is_undefined_at_the_origin_is_accepted_when_the_origin_is_outside_the_mesh():
+    """A quarter ring doesn't contain the origin, so a load like 1/r must be accepted"""
+    config = create_config(1.0, 0.3, 1.0, ElementType.Q9, ProblemType.PLANE_STRESS)
+    mesh = create_structured_quad_mesh(config, 1.0, 1.0, 2, 2)
+    morph_mesh_to_quarter_annulus(mesh, inner_radius=1.0, outer_radius=2.0)
+    add_load(config, mesh, "west", LoadType.PRESSURE, lambda x, y: 1 / math.sqrt(x**2 + y**2))
+    assert len(config.loads) == 1

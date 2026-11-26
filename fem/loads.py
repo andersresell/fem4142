@@ -14,18 +14,18 @@ VALID_LOAD_FUNCTION_EXAMPLES = """
 """
 
 
-def validate_load_func(f):
-    """Checks that the load function can be called as f(x, y), and returns the number of values it
-    returns: 1 for a scalar load (e.g. pressure) or 2 for a vector load (e.g. traction)."""
+def validate_load_func(f, x, y):
+    """Checks that the load function can be called as f(x, y) at the point (x, y), and returns the number of
+    values it returns: 1 for a scalar load (e.g. pressure) or 2 for a vector load (e.g. traction)."""
     if not callable(f):
         raise TypeError(f"The load must be a function of x and y.\n{VALID_LOAD_FUNCTION_EXAMPLES}")
     try:
-        result = f(0.0, 0.0)
+        result = f(x, y)
     except TypeError as e:
-        raise TypeError(f"Calling the load function as f(x=0.0, y=0.0) failed. It must take exactly two "
+        raise TypeError(f"Calling the load function as f(x={x:g}, y={y:g}) failed. It must take exactly two "
                         f"arguments (x, y). The error was: {e}\n{VALID_LOAD_FUNCTION_EXAMPLES}")
     except Exception as e:
-        raise ValueError(f"The load function raised an error when called with (x, y) = (0.0, 0.0): {e}")
+        raise ValueError(f"The load function raised an error when called with (x, y) = ({x:g}, {y:g}): {e}")
 
     try:
         result = np.asarray(result, dtype=float)
@@ -33,7 +33,7 @@ def validate_load_func(f):
         raise TypeError(f"The load function must return one or two numbers, but it returned {result!r}.\n"
                         f"{VALID_LOAD_FUNCTION_EXAMPLES}")
     if not np.all(np.isfinite(result)):
-        raise ValueError(f"The load function returned {result} at (x, y) = (0.0, 0.0). Did you forget 'return'?")
+        raise ValueError(f"The load function returned {result} at (x, y) = ({x:g}, {y:g}). Did you forget 'return'?")
     if result.shape == ():
         return 1
     elif result.shape == (2,):
@@ -97,7 +97,11 @@ def check_load_validity(config: Config, mesh: Mesh, element_set_name, load_type,
     #====================================================================
     # Then a bunch of checks to ensure the load function is valid
     #====================================================================
-    num_output_components = validate_load_func(load_function)
+    #The function is tested at a node where the load acts (not at the origin, which may be outside the mesh)
+    first_element = element_set.elementIDs[0]
+    first_local_node = ELEMENT_TRAITS[config.element_type].entity_nodes[element_set.element_entity][0]
+    x_test, y_test = mesh.nodes[mesh.elements[first_element, first_local_node]]
+    num_output_components = validate_load_func(load_function, x_test, y_test)
     assert num_output_components in [1, 2]
     if config.problem_type == ProblemType.PLANE_STRESS:
         if load_type == LoadType.TRACTION or load_type == LoadType.BODY_FORCE:
