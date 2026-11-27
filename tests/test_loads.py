@@ -79,6 +79,26 @@ def test_scalar_load_functions_of_common_types_are_accepted(load_function):
     assert np.isclose(Fy, -3.0 * Lx * h)
 
 
+@pytest.mark.parametrize("load", [(1.0, 2.0), [1, 2], np.array([1.0, 2.0])], ids=["tuple", "list", "numpy array"])
+def test_constant_vector_loads_are_accepted(load):
+    Fx, Fy = assemble_external_forces(ProblemType.PLANE_STRESS, ElementType.Q9, "east", LoadType.TRACTION, load)
+    assert np.isclose(Fx, 1.0 * Ly * h) and np.isclose(Fy, 2.0 * Ly * h)
+
+
+@pytest.mark.parametrize("problem_type", [ProblemType.PLANE_STRESS, ProblemType.PLATE], ids=lambda p: p.name)
+@pytest.mark.parametrize("load", [3, 3.0, np.float64(3.0)], ids=["int", "float", "numpy float"])
+def test_constant_scalar_loads_give_the_same_forces_as_a_function(problem_type, load):
+    if problem_type == ProblemType.PLANE_STRESS:
+        element_set_name = "north"
+    else:
+        assert problem_type == ProblemType.PLATE
+        element_set_name = "domain"
+    from_constant = assemble_external_forces(problem_type, ElementType.Q9, element_set_name, LoadType.PRESSURE, load)
+    from_function = assemble_external_forces(problem_type, ElementType.Q9, element_set_name, LoadType.PRESSURE,
+                                             lambda x, y: 3.0)
+    assert np.allclose(from_constant, from_function)
+
+
 @pytest.mark.parametrize(
     "load_type, load_function",
     [
@@ -86,9 +106,13 @@ def test_scalar_load_functions_of_common_types_are_accepted(load_function):
         (LoadType.TRACTION, lambda x: (1.0, 2.0)),  # only one argument
         (LoadType.TRACTION, lambda x, y: 1.0),  # traction must be a vector
         (LoadType.PRESSURE, lambda x, y: (1.0, 2.0)),  # pressure must be a scalar
-        (LoadType.TRACTION, 5.0),  # not a function
+        (LoadType.TRACTION, 5.0),  # constant traction with one component
+        (LoadType.PRESSURE, (1.0, 2.0)),  # constant pressure with two components
+        (LoadType.PRESSURE, "10"),  # neither a number nor a function
+        (LoadType.PRESSURE, None),  # no load
     ],
-    ids=["three components", "one argument", "scalar traction", "vector pressure", "not a function"])
+    ids=["three components", "one argument", "scalar traction", "vector pressure", "scalar constant traction",
+         "vector constant pressure", "text", "None"])
 def test_invalid_load_functions_are_rejected(load_type, load_function):
     config = create_config(1.0, 0.3, h, ElementType.Q4, ProblemType.PLANE_STRESS)
     mesh = create_structured_quad_mesh(config, Lx, Ly, 2, 2)

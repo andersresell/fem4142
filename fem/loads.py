@@ -5,13 +5,39 @@ from fem.fem_utils import *
 import fem.shape_functions as shape_functions
 
 VALID_LOAD_FUNCTION_EXAMPLES = """
-    Two examples of valid load functions are:
-        Load with two components (e.g. traction): load_function = lambda x, y: (10, y)
-        Load with one component (e.g. pressure):  load_function = lambda x, y: 10
+    Examples of valid loads:
+        A constant with two components (e.g. traction):  (10, 0)
+        A constant with one component (e.g. pressure):   10
+        A function of x and y with two components:       lambda x, y: (10, y)
+        A function of x and y with one component:        lambda x, y: 10 * x
     You may also write a normal function like:
         def load_function(x, y):
             return 10, y
 """
+
+
+def convert_constant_load_to_function(load):
+    """A constant load can be given as a number (e.g. 1000) or two numbers (e.g. (0, -1000)) instead of a function.
+    It is turned into a function of (x, y), so that all loads can be used in the same way."""
+    if callable(load):
+        return load
+    try:
+        if isinstance(load, str):  #numpy would accept e.g. "10" as a number
+            raise TypeError
+        value = np.asarray(load, dtype=float)
+    except (TypeError, ValueError):
+        raise TypeError(f"The load must be a number, two numbers or a function of x and y, got {load!r}.\n"
+                        f"{VALID_LOAD_FUNCTION_EXAMPLES}")
+    if not np.all(np.isfinite(value)):  #E.g. None, which numpy turns into NaN
+        raise TypeError(f"A constant load must be one or two finite numbers, got {load!r}.\n"
+                        f"{VALID_LOAD_FUNCTION_EXAMPLES}")
+    if value.shape == ():
+        constant = float(value)
+        return lambda x, y: constant
+    elif value.shape == (2,):
+        constant = (float(value[0]), float(value[1]))
+        return lambda x, y: constant
+    raise TypeError(f"A constant load must be one or two numbers, got {load!r}.\n{VALID_LOAD_FUNCTION_EXAMPLES}")
 
 
 def validate_load_func(f, x, y):
@@ -127,16 +153,18 @@ def check_load_validity(config: Config, mesh: Mesh, element_set_name, load_type,
 
 
 def add_load(config: Config, mesh: Mesh, element_set_name, load_type, load_function):
-    """Adds a load to the specified element set with the given load function.
-       The load function is a lambda or function that takes (x, y) coordinates and
-       returns either a single value (for LoadType.PRESSURE) or a tuple of two values
-       (for LoadType.TRACTION or LoadType.BODY_FORCE).
+    """Adds a load to the specified element set. The load is either a constant, or a function (e.g. a lambda)
+       of the coordinates (x, y). It has a single value for LoadType.PRESSURE (and for all loads on plates),
+       and two values for LoadType.TRACTION and LoadType.BODY_FORCE in plane stress.
        Examples:
-       load_function = lambda x, y: (10, x) # For LoadType.TRACTION or LoadType.BODY_FORCE
-       load_function = lambda x, y: 10 # For LoadType.PRESSURE
+       load_function = (10, 0)  # A constant, for LoadType.TRACTION or LoadType.BODY_FORCE
+       load_function = 10  # A constant, for LoadType.PRESSURE
+       load_function = lambda x, y: (10, x)  # Varies with x, for LoadType.TRACTION or LoadType.BODY_FORCE
+       load_function = lambda x, y: 10 * x  # Varies with x, for LoadType.PRESSURE
     """
     load_type = LoadType(load_type)  #Gives a clear error message if the load type is not valid
     try:
+        load_function = convert_constant_load_to_function(load_function)
         check_load_validity(config, mesh, element_set_name, load_type, load_function)
     except Exception as e:
         raise ValueError(f"Invalid load configuration for element set '{element_set_name}' "

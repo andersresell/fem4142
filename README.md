@@ -5,7 +5,7 @@
 ## Current features:
 - 2D structured mesh generator for Q4, Q8, Q9, and Q16 quadrilateral elements
 - Plane stress elements and plate elements (Mindlin)
-- Consistent load integration either on faces or edges, where the load is specified as a function of x, y
+- Consistent load integration either on faces or edges, where the load is specified as a constant or a function of x, y
 - Zero or prescribed displacement boundary conditions
 - Simple GUI (see images below)
 
@@ -118,7 +118,9 @@ the project folder:
 python beam_example.py
 ```
 
-More examples are found in the folder `examples`.
+More examples are found in the folder `examples`. How to set up your own problems, and what the names in the code
+mean, is described in the [documentation](documentation/documentation.md) (also as a
+[PDF](documentation/documentation.pdf)).
 
 The GUI is interactive, so run the scripts as normal Python scripts, e.g. from a terminal or with the Run button in
 VS Code. In Spyder, plots are by default shown as static images in the console, which makes the buttons in the GUI
