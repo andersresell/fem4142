@@ -13,7 +13,7 @@ from fem.useful_imports import *
 
 @pytest.fixture(autouse=True)
 def gui_does_not_block(monkeypatch):
-    """Plot() calls plt.show() at the end. Replace it with a function that does nothing,
+    """GUI() calls plt.show() at the end. Replace it with a function that does nothing,
     and close the figures after each test."""
     monkeypatch.setattr(plt, "show", lambda *args, **kwargs: None)
     yield
@@ -59,7 +59,7 @@ def test_plane_stress_contours(contour, stress_recovery_method):
     config, mesh, solver_data = solved_plane_stress_problem()
     config.contour = contour
     config.stress_recovery = stress_recovery_method
-    plot_tools.Plot(config, mesh, solver_data)
+    plot_tools.GUI(config, mesh, solver_data)
 
 
 @pytest.mark.parametrize("contour, stress_recovery_method", all_contours(ProblemType.PLATE))
@@ -69,7 +69,7 @@ def test_plate_contours_and_boundary_conditions(contour, stress_recovery_method)
     config.stress_recovery = stress_recovery_method
     config.show_bcs = True  #The plate problem has w, thetax and thetay boundary conditions
     config.show_labels = True
-    plot_tools.Plot(config, mesh, solver_data)
+    plot_tools.GUI(config, mesh, solver_data)
 
 
 @pytest.mark.parametrize("arrow_type", ["none", "disp", "external forces", "reaction forces"])
@@ -79,14 +79,14 @@ def test_plane_stress_arrows_labels_and_boundary_conditions(arrow_type):
     config.show_bcs = True
     config.show_labels = True
     config.specify_contour_limits = True
-    plot_tools.Plot(config, mesh, solver_data)
+    plot_tools.GUI(config, mesh, solver_data)
 
 
 def test_unknown_contour_gives_a_clear_error():
     config, mesh, solver_data = solved_plate_problem()
     config.contour = "sigma_xx"  #Not available for plates
     with pytest.raises(ValueError, match="M_xx"):
-        plot_tools.Plot(config, mesh, solver_data)
+        plot_tools.GUI(config, mesh, solver_data)
 
 
 @pytest.mark.parametrize("contour", ["u_mag", "sigma_xx"])
@@ -98,7 +98,7 @@ def test_gui_shows_nan_results_without_crashing(contour):
     solver_data.R_int[:] = np.nan
     config.contour = contour
     config.arrow_type = "reaction forces"
-    plot_tools.Plot(config, mesh, solver_data)
+    plot_tools.GUI(config, mesh, solver_data)
 
 
 def test_arrows_with_nothing_to_draw():
@@ -111,7 +111,7 @@ def test_arrows_with_nothing_to_draw():
     solver_data = create_solver_data(config, mesh)
     solve(config, solver_data, mesh)
     config.arrow_type = "external forces"
-    plot_tools.Plot(config, mesh, solver_data)
+    plot_tools.GUI(config, mesh, solver_data)
 
 
 def test_gui_draws_the_plot_only_once(monkeypatch):
@@ -124,7 +124,7 @@ def test_gui_draws_the_plot_only_once(monkeypatch):
 
     monkeypatch.setattr(plot_tools, "plot_field", counting_plot_field)
     config, mesh, solver_data = solved_plane_stress_problem()
-    plot_tools.Plot(config, mesh, solver_data)
+    plot_tools.GUI(config, mesh, solver_data)
     assert len(calls) == 1
 
 
@@ -140,7 +140,7 @@ def test_gui_calculates_the_L2_stresses_only_once(monkeypatch):
     config, mesh, solver_data = solved_plane_stress_problem()
     config.contour = "sigma_xx"
     config.stress_recovery = "L2"
-    plot = plot_tools.Plot(config, mesh, solver_data)
+    plot = plot_tools.GUI(config, mesh, solver_data)
     plot.radio_contour.set_active(plot.field_names.index("sigma_vm"))  #Clicking another stress redraws the plot
     assert len(calls) == 1
 
@@ -149,7 +149,7 @@ def test_contour_limits_do_not_change_when_they_are_specified():
     """The limits are shown rounded in the text boxes, but ticking "specify contour limits" must keep the exact limits"""
     config, mesh, solver_data = solved_plane_stress_problem()
     config.contour = "sigma_xx"
-    plot = plot_tools.Plot(config, mesh, solver_data)
+    plot = plot_tools.GUI(config, mesh, solver_data)
     limits_before = (plot.cbar.norm.vmin, plot.cbar.norm.vmax)
     plot.check_specify_limits.set_active(0)  #Tick "specify contour limits", which redraws the plot
     assert config.specify_contour_limits
@@ -159,7 +159,7 @@ def test_contour_limits_do_not_change_when_they_are_specified():
 def test_contour_limit_boxes_are_only_shown_when_the_limits_are_specified():
     config, mesh, solver_data = solved_plane_stress_problem()
     config.contour = "sigma_xx"
-    plot = plot_tools.Plot(config, mesh, solver_data)
+    plot = plot_tools.GUI(config, mesh, solver_data)
     assert not plot.box_contour_max.ax.get_visible() and not plot.box_contour_min.ax.get_visible()
     plot.check_specify_limits.set_active(0)  #Tick "specify contour limits"
     assert plot.box_contour_max.ax.get_visible() and plot.box_contour_min.ax.get_visible()
@@ -168,7 +168,7 @@ def test_contour_limit_boxes_are_only_shown_when_the_limits_are_specified():
 def test_automatic_displacement_scaling_can_be_replaced_by_true_scale():
     config, mesh, solver_data = solved_plane_stress_problem()  #A 4 x 1 mesh
     assert config.disp_scaling == "auto"
-    plot = plot_tools.Plot(config, mesh, solver_data)
+    plot = plot_tools.GUI(config, mesh, solver_data)
     u, v = unpack_solution(config, solver_data.r)
     largest_displacement = np.max(np.sqrt(u**2 + v**2))
     assert config.disp_scaling * largest_displacement == pytest.approx(0.1 * 4.0, rel=0.05)  #10% of the mesh size
@@ -182,7 +182,7 @@ def test_automatic_displacement_scaling_can_be_replaced_by_true_scale():
 
 def test_disp_scale_box_is_only_shown_for_the_deformed_shape():
     config, mesh, solver_data = solved_plane_stress_problem()
-    plot = plot_tools.Plot(config, mesh, solver_data)
+    plot = plot_tools.GUI(config, mesh, solver_data)
     assert config.show_deformed and plot.box_disp_scale.ax.get_visible()
     assert not np.allclose(plot.node_markers.get_offsets(), mesh.nodes)
     plot.check_buttons.set_active(4)  #Untick "deformed shape", which redraws the plot
@@ -220,17 +220,17 @@ CLAMPED = r"$w$, $\theta_x$ and $\theta_y$ prescribed (clamped)"
 ], ids=["plane stress", "plate", "clamped plate"])
 def test_boundary_conditions_are_shown_by_default_and_explained_in_the_legend(solve_problem, expected_labels):
     config, mesh, solver_data = solve_problem()
-    plot = plot_tools.Plot(config, mesh, solver_data)
+    plot = plot_tools.GUI(config, mesh, solver_data)
     legend_labels = [text.get_text() for text in plot.ax.get_legend().get_texts()]
     assert sorted(legend_labels) == sorted(expected_labels)
 
 
 def test_disp_scale_and_arrows_are_only_shown_for_plane_stress():
     config, mesh, solver_data = solved_plate_problem()
-    plot = plot_tools.Plot(config, mesh, solver_data)
+    plot = plot_tools.GUI(config, mesh, solver_data)
     assert plot.box_disp_scale is None and plot.radio_arrows is None and plot.slider_arrow_scale is None
     config, mesh, solver_data = solved_plane_stress_problem()
-    plot = plot_tools.Plot(config, mesh, solver_data)
+    plot = plot_tools.GUI(config, mesh, solver_data)
     assert plot.box_disp_scale is not None and plot.radio_arrows is not None
 
 
@@ -238,7 +238,7 @@ def test_arrows_for_a_plate_give_a_clear_error():
     config, mesh, solver_data = solved_plate_problem()
     config.arrow_type = "reaction forces"
     with pytest.raises(ValueError, match="plane stress"):
-        plot_tools.Plot(config, mesh, solver_data)
+        plot_tools.GUI(config, mesh, solver_data)
 
 
 @pytest.mark.parametrize("nE", [1, 4, 30])
@@ -251,7 +251,7 @@ def test_the_longest_arrow_follows_the_symbol_size(nE):
     solver_data = create_solver_data(config, mesh)
     solve(config, solver_data, mesh)
     config.arrow_type = "external forces"
-    plot = plot_tools.Plot(config, mesh, solver_data)
+    plot = plot_tools.GUI(config, mesh, solver_data)
     arrows = [collection for collection in plot.ax.collections if isinstance(collection, matplotlib.quiver.Quiver)][0]
     longest_arrow = np.max(np.sqrt(arrows.U**2 + arrows.V**2)) * plot_tools.get_screen_length_of_unit_length(plot.ax)
     window_scale = plot.fig.get_size_inches()[1] / plot.DESIGN_HEIGHT
@@ -264,7 +264,7 @@ def test_the_longest_arrow_follows_the_symbol_size(nE):
 def test_nodes_and_element_edges_can_be_hidden_separately():
     config, mesh, solver_data = solved_plane_stress_problem()
     config.show_nodes = False
-    plot = plot_tools.Plot(config, mesh, solver_data)
+    plot = plot_tools.GUI(config, mesh, solver_data)
     assert plot.node_markers is None
     plot.check_buttons.set_active(1)  #Tick "nodes"
     plot.check_buttons.set_active(2)  #Untick "element edges"
@@ -275,7 +275,7 @@ def test_nodes_and_element_edges_can_be_hidden_separately():
 def test_labels_show_node_and_element_numbers():
     config, mesh, solver_data = solved_plane_stress_problem()
     config.show_labels = True
-    plot = plot_tools.Plot(config, mesh, solver_data)
+    plot = plot_tools.GUI(config, mesh, solver_data)
     assert [label.get_text() for label in plot.node_labels] == [str(i) for i in range(mesh.get_nN())]
     assert [label.get_text() for label in plot.element_labels] == [f"({e})" for e in range(mesh.get_nE())]
 
@@ -300,7 +300,7 @@ def get_element_edge_width(plot):
 def test_fine_meshes_get_thin_element_edges_and_small_nodes():
     """Otherwise the edges and nodes of a fine mesh would cover the contours"""
     config, mesh, solver_data = solved_plane_stress_problem()  #A coarse mesh
-    plot = plot_tools.Plot(config, mesh, solver_data)
+    plot = plot_tools.GUI(config, mesh, solver_data)
     assert get_element_edge_width(plot) == 1.0
 
     config = create_config(210e9, 0.3, 1.0, ElementType.Q4, ProblemType.PLANE_STRESS)
@@ -310,7 +310,7 @@ def test_fine_meshes_get_thin_element_edges_and_small_nodes():
     add_load(config, mesh, "north", LoadType.PRESSURE, lambda x, y: 1000.0)
     solver_data = create_solver_data(config, mesh)
     solve(config, solver_data, mesh)
-    plot = plot_tools.Plot(config, mesh, solver_data)
+    plot = plot_tools.GUI(config, mesh, solver_data)
     assert get_element_edge_width(plot) < 1.0
     node_diameter = np.sqrt(plot.node_markers.get_sizes()[0])
     assert node_diameter < 0.5 * plot.get_symbol_size()  #Smaller than the nodes of a coarse mesh can be
@@ -327,7 +327,7 @@ def test_symbols_have_a_largest_size_and_follow_the_symbol_size_slider():
     solve(config, solver_data, mesh)
     config.show_labels = True
     config.show_bcs = True
-    plot = plot_tools.Plot(config, mesh, solver_data)
+    plot = plot_tools.GUI(config, mesh, solver_data)
     window_scale = plot.fig.get_size_inches()[1] / plot.DESIGN_HEIGHT
     largest_size = 12 * window_scale
     assert plot.node_labels[0].get_fontsize() == pytest.approx(largest_size)
@@ -341,7 +341,7 @@ def test_symbols_have_a_largest_size_and_follow_the_symbol_size_slider():
 def test_stress_recovery_is_greyed_out_for_displacements():
     config, mesh, solver_data = solved_plane_stress_problem()
     config.contour = "u"
-    plot = plot_tools.Plot(config, mesh, solver_data)
+    plot = plot_tools.GUI(config, mesh, solver_data)
     assert plot.radio_recovery.labels[0].get_color() == "lightgrey"
     plot.radio_contour.set_active(plot.field_names.index("sigma_xx"))  #Clicking a stress redraws the plot
     assert plot.radio_recovery.labels[0].get_color() == "black"
@@ -349,7 +349,7 @@ def test_stress_recovery_is_greyed_out_for_displacements():
 
 def test_fonts_scale_with_the_window_height():
     config, mesh, solver_data = solved_plane_stress_problem()
-    plot = plot_tools.Plot(config, mesh, solver_data)
+    plot = plot_tools.GUI(config, mesh, solver_data)
     plot.fig.set_size_inches(10, 2 * plot.DESIGN_HEIGHT)
     plot.on_resize(None)
     assert all(text.get_fontsize() == pytest.approx(2 * plot.FONT_SIZE) for text in plot.widget_texts)
@@ -358,7 +358,7 @@ def test_fonts_scale_with_the_window_height():
 def test_save_screen_writes_an_image_to_the_current_directory(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     config, mesh, solver_data = solved_plane_stress_problem()
-    plot = plot_tools.Plot(config, mesh, solver_data)
+    plot = plot_tools.GUI(config, mesh, solver_data)
     plot.save_screen()
     saved_files = os.listdir(tmp_path)
     assert len(saved_files) == 1 and saved_files[0].endswith(".png")
@@ -443,7 +443,7 @@ def test_forces_that_point_into_the_body_are_drawn_outside_it(traction, arrows_s
     solve(config, solver_data, mesh)
     config.arrow_type = "external forces"
     config.show_deformed = False  #Keep the nodes on the edge
-    plot = plot_tools.Plot(config, mesh, solver_data)
+    plot = plot_tools.GUI(config, mesh, solver_data)
     arrows = [collection for collection in plot.ax.collections if isinstance(collection, matplotlib.quiver.Quiver)][0]
     if arrows_start_at_the_edge:
         assert np.allclose(arrows.X, 4.0)

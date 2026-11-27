@@ -14,5 +14,5 @@ from fem.bcs import add_boundary_condition
 from fem.loads import add_load
 from fem.solver_data import create_solver_data, unpack_solution
 from fem.solver import solve, calc_hourglass_energy
-from fem.plot_tools import Plot, plot_field
+from fem.plot_tools import GUI, plot_field
 import fem.stress_recovery as stress_recovery  #e.g. stress_recovery.calc_nodal_stress_L2

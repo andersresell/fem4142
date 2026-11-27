@@ -83,4 +83,4 @@ if __name__ == "__main__":
     # edge meets a free edge at a sharp corner.
     #====================================================================
     config.contour = "sigma_vm"
-    Plot(config, mesh, solver_data)
+    GUI(config, mesh, solver_data)

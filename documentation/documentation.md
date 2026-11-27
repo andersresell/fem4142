@@ -50,7 +50,7 @@ add_boundary_condition(config, mesh, "west", Dof.V, 0)  #v = 0 on the left edge
 add_load(config, mesh, "north", LoadType.PRESSURE, 1e5)  #Pressure on the top edge
 solver_data = create_solver_data(config, mesh)  #The system vectors and matrices
 solve(config, solver_data, mesh)  #Assembles and solves K r = R_ext
-Plot(config, mesh, solver_data)  #Opens the GUI
+GUI(config, mesh, solver_data)  #Opens the GUI
 ```
 
 The code doesn't use units, so use a consistent set, e.g. N, m and Pa.
@@ -135,7 +135,7 @@ w_kirchhoff = -0.00406 * p * L**4 / D
 print(f"Center deflection: {w[center]:.4e}. Kirchhoff theory: {w_kirchhoff:.4e}")
 
 config.contour = "M_xx"
-Plot(config, mesh, solver_data)
+GUI(config, mesh, solver_data)
 ```
 
 ## Theory and conventions
@@ -366,7 +366,7 @@ $\sigma_{xx}, \sigma_{yy}, \sigma_{xy}$ for plane stress, and $M_{xx}, M_{yy}, M
 
 ## Plotting
 
-`Plot(config, mesh, solver_data)` opens the GUI. "Save Screen" saves the plot as a PNG file in the folder that the
+`GUI(config, mesh, solver_data)` opens the GUI. "Save Screen" saves the plot as a PNG file in the folder that the
 script was run from.
 
 `plot_field(ax, config, mesh, solver_data, field)` draws a field as contours in your own matplotlib axes, and

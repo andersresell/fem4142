@@ -110,4 +110,4 @@ if __name__ == "__main__":
     #====================================================================
     # Start the GUI to visualize the results
     #====================================================================
-    Plot(config, mesh, solver_data)
+    GUI(config, mesh, solver_data)

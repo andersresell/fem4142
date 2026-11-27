@@ -339,9 +339,9 @@ def maximize_window(fig):
             pass
 
 
-class Plot:
+class GUI:
     """The GUI, which shows the mesh and the results, with buttons for choosing what to show.
-    Simply construct an instance of the class to start the GUI: Plot(config, mesh, solver_data)"""
+    Simply construct an instance of the class to start the GUI: GUI(config, mesh, solver_data)"""
 
     #Font sizes for a window that is DESIGN_HEIGHT inches tall. They are scaled with the actual height of
     #the window, so that the GUI looks the same on small and large screens.

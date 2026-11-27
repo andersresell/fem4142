@@ -105,4 +105,4 @@ if __name__ == "__main__":
     #====================================================================
     config.contour = "sigma_vm"
     config.arrow_type = "external forces"
-    Plot(config, mesh, solver_data)
+    GUI(config, mesh, solver_data)

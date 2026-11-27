@@ -73,7 +73,7 @@ if __name__ == "__main__":
             wc_k = 0.00126 * abs(q) * L**4 / D  #Kirchhoff solution for a clamped square plate (Timoshenko)
             wc_over_wc_k.append(wc / wc_k)
             if plot_and_interrupt:
-                Plot(config, mesh, solver_data)
+                GUI(config, mesh, solver_data)
         plt.plot(thickness_ratios, wc_over_wc_k, '.-', label=element_type.name)
 
     plt.title(f"Clamped plate, center deflection over Kirchhoff solution\n{nEx}x{nEy} elements per quarter plate")
@@ -87,4 +87,4 @@ if __name__ == "__main__":
     plt.legend()
 
     # plt.show()
-    Plot(config, mesh, solver_data)
+    GUI(config, mesh, solver_data)
